@@ -1,10 +1,6 @@
 import struct
-from typing import TYPE_CHECKING
 
 from Cryptodome.Cipher import AES
-
-if TYPE_CHECKING:
-    from typing import List
 
 
 def xor(s1, s2):
@@ -14,7 +10,7 @@ def xor(s1, s2):
 # taken from @plutooo's crypto gist (https://gist.github.com/plutooo/fd4b22e7f533e780c1759057095d7896),
 #   modified for Python 3 compatibility and optimization
 class XTSN:
-    def __init__(self, crypt: bytes, tweak: bytes):
+    def __init__(self, crypt, tweak):
         self.crypt = crypt
         self.tweak = tweak
 
@@ -48,8 +44,8 @@ class XTSN:
         return out
 
 
-def parse_biskeydump(keys: str):
-    bis_keys: List[List[bytes]] = [[None, None], [None, None], [None, None], [None, None]]
+def parse_biskeydump(keys):
+    bis_keys = [[None, None], [None, None], [None, None], [None, None]]
     for l in keys.splitlines():
         if l.startswith('BIS KEY'):
             data = l.split()[2:]

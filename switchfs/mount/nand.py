@@ -6,7 +6,12 @@ from stat import S_IFDIR, S_IFREG
 from sys import argv
 from typing import TYPE_CHECKING
 
-from crypto import XTSN, parse_biskeydump
+try:
+    from ccrypto import XTSN, parse_biskeydump
+except ImportError:
+    from crypto import XTSN, parse_biskeydump
+    print('Warning, could not load ccrypto, loading Python implementation.')
+
 from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
 
 from . import _common as _c
@@ -53,7 +58,7 @@ class NANDImageMount(LoggingMixIn, Operations):
     destroy = __del__
 
     @_c.ensure_lower_path
-    def getattr(self, path, fh=None):
+    def getattr(self, path: str, fh=None):
         uid, gid, pid = fuse_get_context()
         if path == '/':
             st = {'st_mode': (S_IFDIR | (0o555 if self.readonly else 0o777)), 'st_nlink': 2}
@@ -64,12 +69,12 @@ class NANDImageMount(LoggingMixIn, Operations):
             raise FuseOSError(ENOENT)
         return {**st, **self.g_stat, 'st_uid': uid, 'st_gid': gid}
 
-    def open(self, path, flags):
+    def open(self, path: str, flags):
         self.fd += 1
         return self.fd
 
     @_c.ensure_lower_path
-    def readdir(self, path, fh):
+    def readdir(self, path: str, fh):
         yield from ('.', '..')
         yield from (x[1:] for x in self.files)
 
@@ -99,7 +104,7 @@ class NANDImageMount(LoggingMixIn, Operations):
 
     # TODO: get the real nand size, instead of hard-coding it
     @_c.ensure_lower_path
-    def statfs(self, path):
+    def statfs(self, path: str):
         return {'f_bsize': 4096, 'f_blocks': 0x747C00000 // 4096, 'f_bavail': 0, 'f_bfree': 0,
                 'f_files': len(self.files)}
 

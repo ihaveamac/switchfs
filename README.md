@@ -2,16 +2,13 @@
 
 FUSE (Filesystem in Userspace) scripts for Nintendo Switch files
 
-In development. Requires Python 3.6.1+ and pycryptodomex. Supports Windows (via WinFsp), macOS (via FUSE for macOS) & Linux.
-
-Speeds slow until Cython support is implemented, or a C backend for crypto.
+In development. Requires Python 3.6.1+, Cython, and pycryptodomex. Supports Windows (via WinFsp), macOS (via FUSE for macOS) & Linux.
 
 # Usage
 * Install via pip, or use setup.py
 * Run `<py-cmd> -m switchfs nand -h` for help output
 
 # Stuff to do
-* Use Cython for crypto script
 * implement option parsing
 * more types
 * ...
