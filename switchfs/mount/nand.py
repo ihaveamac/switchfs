@@ -19,12 +19,19 @@ from . import _common as _c
 if TYPE_CHECKING:
     from typing import BinaryIO, List
 
+# TODO: gpt parsing instead of hardcoding offsets
 enc_partitions = {
-    'prodinfo': (0, 0x4400, 0x3FBC00),
-    'prodinfof': (0, 0x400000, 0x400000),
-    'safe': (1, 0x3800000, 0x4000000),
-    'system': (2, 0x7800000, 0xA0000000),
-    'user': (3, 0xA7800000, 0x680000000)
+    'PRODINFO': (0, 0x4400, 0x3FBC00),
+    'PRODINFOF': (0, 0x400000, 0x400000),
+    'BCPKG2-1-Normal-Main': (-1, 0x800000, 0x800000),
+    'BCPKG2-2-Normal-Sub': (-1, 0x1000000, 0x800000),
+    'BCPKG2-3-SafeMode-Main': (-1, 0x1800000, 0x800000),
+    'BCPKG2-4-SafeMode-Sub': (-1, 0x2000000, 0x800000),
+    'BCPKG2-5-Repair-Main': (-1, 0x2800000, 0x800000),
+    'BCPKG2-6-Repair-Sub': (-1, 0x3000000, 0x800000),
+    'SAFE': (1, 0x3800000, 0x4000000),
+    'SYSTEM': (2, 0x7800000, 0xA0000000),
+    'USER': (3, 0xA7800000, 0x680000000)
 }
 
 # TODO: writing?
@@ -45,7 +52,7 @@ class NANDImageMount(LoggingMixIn, Operations):
 
         self.files = {}
         for n, o in enc_partitions.items():
-            self.files[f'/{n}.img'] = {'offset': o[1], 'size': o[2], 'bis_key': o[0], 'type': 'enc'}
+            self.files[f'/{n.lower()}.img'] = {'real_filename': n + '.img', 'offset': o[1], 'size': o[2], 'bis_key': o[0]}
 
         self.f = nand_fp
 
@@ -76,14 +83,14 @@ class NANDImageMount(LoggingMixIn, Operations):
     @_c.ensure_lower_path
     def readdir(self, path: str, fh):
         yield from ('.', '..')
-        yield from (x[1:] for x in self.files)
+        yield from (x['real_filename'] for x in self.files.values())
 
     @_c.ensure_lower_path
     def read(self, path: str, size: int, offset: int, fh):
         fi = self.files[path]
         real_offset: int = fi['offset'] + offset
 
-        if fi['type'] == 'enc':
+        if fi['bis_key'] > 0:
             before = offset % 0x4000
             aligned_real_offset = real_offset - before
             aligned_offset = offset - before
@@ -98,7 +105,7 @@ class NANDImageMount(LoggingMixIn, Operations):
 
             return bytes(data[before:before + size])
 
-        elif fi['type'] == 'raw':
+        else:
             self.f.seek(real_offset)
             return self.f.read(size)
 
@@ -126,5 +133,5 @@ def main(prog: str = None, args: list = None):
         mount = NANDImageMount(nand_fp=f, g_stat=nand_stat, keys=k.read())
         FUSE(mount, a.mount_point, foreground=True, ro=True, nothreads=True,
              fsname=os.path.realpath(a.nand).replace(',', '_'), allow_root=True)
-        # allow_root is True by default hereto allow mounting on *nix
+        # allow_root is True by default here to allow mounting on *nix
         # this will be changed once option parsing is copied over
