@@ -4,6 +4,8 @@ FUSE (Filesystem in Userspace) scripts for Nintendo Switch files
 
 In development. Requires Python 3.6.1+, Cython, and pycryptodomex. Supports Windows (via WinFsp), macOS (via FUSE for macOS) & Linux.
 
+NAND currently requires a keys text file from biskeydump.
+
 # Usage
 * Install via pip, or use setup.py
 * Run `<py-cmd> -m switchfs nand -h` for help output
