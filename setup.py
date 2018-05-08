@@ -3,13 +3,14 @@
 import sys
 
 from setuptools import setup
+
+if sys.hexversion < 0x030601f0:
+    sys.exit('Python 3.6.1+ is required.')
+
 try:
     from Cython.Build import cythonize  # this has to be manually installed before somehow...
 except ImportError:
     sys.exit("Couldn't import Cython to build extensions, please install via pip.")
-
-if sys.hexversion < 0x030601f0:
-    sys.exit('Python 3.6.1+ is required.')
 
 with open('README.md', 'r', encoding='utf-8') as f:
     readme = f.read()

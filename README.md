@@ -9,6 +9,7 @@ NAND currently requires a keys text file from biskeydump.
 # Usage
 * Install via pip, or use setup.py
 * Run `<py-cmd> -m switchfs nand -h` for help output
+  * `<py-cmd>` is `py -3` on Windows, `python3` on macOS/Linux
 
 # Stuff to do
 * implement option parsing
