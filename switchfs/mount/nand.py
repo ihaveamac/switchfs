@@ -96,16 +96,14 @@ class NANDImageMount(LoggingMixIn, Operations):
             before = offset % 0x4000
             aligned_real_offset = real_offset - before
             aligned_offset = offset - before
-            aligned_size = size + before
+            aligned_size: int = ceil((size + before) / 0x4000) * 0x4000
             self.f.seek(aligned_real_offset)
-            data = bytearray()
             xtsn = self.crypto[fi['bis_key']]
+            sector_offset = aligned_offset // 0x4000
             # noinspection PyTypeChecker
-            for chunk in range(ceil(aligned_size / 0x4000)):
-                sector_offset = (aligned_offset // 0x4000) + chunk
-                data.extend(xtsn.decrypt(self.f.read(0x4000), sector_offset, 0x4000))
-
-            return bytes(data[before:before + size])
+            return bytes(xtsn.decrypt(self.f.read(ceil(aligned_size / 0x4000) * 0x4000),
+                                      sector_offset,
+                                      0x4000))[before:before + size]
 
         else:
             self.f.seek(real_offset)

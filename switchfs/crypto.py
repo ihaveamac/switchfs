@@ -24,7 +24,7 @@ class XTSN:
     def __repr__(self):
         return f'XTSN({self.crypt}, {self.tweak})'
 
-    def decrypt(self, buf, sector_off, sector_size=0x200):
+    def decrypt(self, buf: bytes, sector_off: int, sector_size: int = 0x200):
         out = bytearray()
 
         for i in range(len(buf) // sector_size):
