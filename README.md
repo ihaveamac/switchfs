@@ -6,6 +6,9 @@ In development. Requires Python 3.6.1+, Cython, and pycryptodomex. Supports Wind
 
 NAND currently requires a keys text file from biskeydump.
 
+# Known issues
+* PRODINFO/PRODINFOF not decrypted properly
+
 # Usage
 * Install via pip, or use setup.py
 * Run `<py-cmd> -m switchfs nand -h` for help output

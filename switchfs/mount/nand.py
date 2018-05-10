@@ -19,8 +19,10 @@ from . import _common as _c
 if TYPE_CHECKING:
     from typing import BinaryIO, List
 
-# TODO: gpt parsing instead of hardcoding offsets
+# TODO: gpt parsing instead of hard-coding offsets
 enc_partitions = {
+    # TODO: try to fix PRODINFO[F] crypto. this one is not aligned to 0x4000 so maybe it needs special handling.
+    #   or maybe i just need to fix my code.
     'PRODINFO': (0, 0x4400, 0x3FBC00),
     'PRODINFOF': (0, 0x400000, 0x400000),
     'BCPKG2-1-Normal-Main': (-1, 0x800000, 0x800000),

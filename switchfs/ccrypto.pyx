@@ -1,3 +1,4 @@
+from __future__ import print_function  # cython uses the print statement without this even on 3.x
 import struct
 
 from Cryptodome.Cipher import AES
@@ -10,7 +11,7 @@ def xor(s1, s2):
 # taken from @plutooo's crypto gist (https://gist.github.com/plutooo/fd4b22e7f533e780c1759057095d7896),
 #   modified for Python 3 compatibility and optimization
 class XTSN:
-    def __init__(self, crypt, tweak):
+    def __init__(self, bytes crypt, bytes tweak):
         self.crypt = crypt
         self.tweak = tweak
 
@@ -20,8 +21,11 @@ class XTSN:
     def __repr__(self):
         return f'XTSN({self.crypt}, {self.tweak})'
 
-    def decrypt(self, buf, sector_off, sector_size=0x200):
-        out = bytearray()
+    def decrypt(self, bytes buf, long sector_off, long sector_size=0x200):
+        cdef bytearray out = bytearray()
+
+        # TODO: maybe figure out why putting "pos" as long makes the tweak not generate correctly
+        cdef long off
 
         for i in range(len(buf) // sector_size):
             pos = sector_off + i
@@ -44,7 +48,7 @@ class XTSN:
         return out
 
 
-def parse_biskeydump(keys):
+def parse_biskeydump(str keys):
     bis_keys = [[None, None], [None, None], [None, None], [None, None]]
     for l in keys.splitlines():
         if l.startswith('BIS KEY'):
