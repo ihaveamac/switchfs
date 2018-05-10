@@ -27,9 +27,11 @@ class XTSN:
         # TODO: maybe figure out why putting "pos" as long makes the tweak not generate correctly
         cdef long off
 
+        p = struct.Struct('>QQ')
+
         for i in range(len(buf) // sector_size):
             pos = sector_off + i
-            tweak = self.c_enc(struct.pack('>QQ', (pos >> 64) & 0xffffffffffffffff, pos & 0xffffffffffffffff))
+            tweak = self.c_enc(p.pack(0, pos))
 
             for j in range(sector_size // 16):
                 off = i * sector_size + j * 16
