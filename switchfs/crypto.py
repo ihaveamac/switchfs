@@ -1,13 +1,10 @@
-import struct
 from typing import TYPE_CHECKING
-
-from Cryptodome.Cipher import AES
 
 if TYPE_CHECKING:
     from typing import List
 
 try:
-    # noinspection PyProtectedMember
+    # noinspection PyProtectedMember,PyUnresolvedReferences
     from ccrypto import _xtsn_decrypt
 
 
@@ -17,13 +14,15 @@ try:
             self.tweak = tweak
 
         def decrypt(self, buf: bytes, sector_off: int, sector_size: int = 0x200) -> bytes:
-            sectoroffsethi = (sector_off >> 64) & 0xFFFFFFFFFFFFFFFF
-            sectoroffsetlo = sector_off & 0xFFFFFFFFFFFFFFFF
-            return _xtsn_decrypt(buf, self.crypt, self.tweak, sectoroffsethi, sectoroffsetlo, sector_size)
+            return _xtsn_decrypt(buf, self.crypt, self.tweak, (sector_off >> 64) & 0xFFFFFFFFFFFFFFFF,
+                                 sector_off & 0xFFFFFFFFFFFFFFFF, sector_size)
 
 
 except ImportError:
     print("Warning: couldn't load ccrypto, loading slower Python module.")
+
+    import struct
+    from Cryptodome.Cipher import AES
 
 
     def _xor(s1, s2):
