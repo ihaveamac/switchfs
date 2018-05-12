@@ -6,11 +6,7 @@ from stat import S_IFDIR, S_IFREG
 from sys import argv
 from typing import TYPE_CHECKING
 
-try:
-    from ccrypto import XTSN, parse_biskeydump
-except ImportError:
-    from crypto import XTSN, parse_biskeydump
-    print('Warning, could not load ccrypto, loading Python implementation.')
+from crypto import XTSN, parse_biskeydump
 
 from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
 
@@ -36,6 +32,7 @@ enc_partitions = {
     'USER': (3, 0xA7800000, 0x680000000)
 }
 
+
 # TODO: writing?
 
 
@@ -54,7 +51,8 @@ class NANDImageMount(LoggingMixIn, Operations):
 
         self.files = {}
         for n, o in enc_partitions.items():
-            self.files[f'/{n.lower()}.img'] = {'real_filename': n + '.img', 'offset': o[1], 'size': o[2], 'bis_key': o[0]}
+            self.files[f'/{n.lower()}.img'] = {'real_filename': n + '.img', 'offset': o[1], 'size': o[2],
+                                               'bis_key': o[0]}
 
         self.f = nand_fp
 
@@ -101,9 +99,8 @@ class NANDImageMount(LoggingMixIn, Operations):
             xtsn = self.crypto[fi['bis_key']]
             sector_offset = aligned_offset // 0x4000
             # noinspection PyTypeChecker
-            return bytes(xtsn.decrypt(self.f.read(ceil(aligned_size / 0x4000) * 0x4000),
-                                      sector_offset,
-                                      0x4000))[before:before + size]
+            return xtsn.decrypt(self.f.read(ceil(aligned_size / 0x4000) * 0x4000), sector_offset, 0x4000)[
+                   before:before + size]
 
         else:
             self.f.seek(real_offset)

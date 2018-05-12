@@ -2,15 +2,10 @@
 
 import sys
 
-from setuptools import setup
+from setuptools import setup, Extension
 
 if sys.hexversion < 0x030601f0:
     sys.exit('Python 3.6.1+ is required.')
-
-try:
-    from Cython.Build import cythonize  # this has to be manually installed before somehow...
-except ImportError:
-    sys.exit("Couldn't import Cython to build extensions, please install via pip.")
 
 with open('README.md', 'r', encoding='utf-8') as f:
     readme = f.read()
@@ -30,6 +25,6 @@ setup(
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.6',
     ],
-    install_requires=['pycryptodomex', 'Cython'],
-    ext_modules=cythonize('switchfs/ccrypto.pyx')
+    ext_modules=[Extension('switchfs.ccrypto', sources=['switchfs/ccrypto.c', 'switchfs/aes.c'],
+                           extra_compile_args=['-O2'])]
 )
