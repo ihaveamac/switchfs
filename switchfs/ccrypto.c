@@ -63,7 +63,6 @@ void aes_xtsn_decrypt(u8 *buffer, u64 len, u8 *key, u8 *tweakin, u64 sectoroffse
     u64 position[2] = {sectoroffsethi, sectoroffsetlo};
 
     for (i = 0; i < (len / (u64) sector_size); i++) {
-        if (position[1] > (position[1] + 1LLU)) position[0] += 1LLU; //if overflow, we gotta
         union bigint128 tweak = geniv(position[0], position[1]);
         AES_ECB_encrypt(&_tweak, tweak.value8);
         int j;
@@ -76,6 +75,7 @@ void aes_xtsn_decrypt(u8 *buffer, u64 len, u8 *key, u8 *tweakin, u64 sectoroffse
             if (flag) tweak.value8[0] ^= 0x87;
             buffer += 16;
         }
+        if (position[1] > (position[1] + 1LLU)) position[0] += 1LLU; //if overflow, we gotta
         position[1] += 1LLU;
     }
 }
