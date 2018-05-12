@@ -17,8 +17,6 @@ if TYPE_CHECKING:
 
 # TODO: gpt parsing instead of hard-coding offsets
 enc_partitions = {
-    # TODO: try to fix PRODINFO[F] crypto. this one is not aligned to 0x4000 so maybe it needs special handling.
-    #   or maybe i just need to fix my code.
     'PRODINFO': (0, 0x4400, 0x3FBC00),
     'PRODINFOF': (0, 0x400000, 0x400000),
     'BCPKG2-1-Normal-Main': (-1, 0x800000, 0x800000),
@@ -90,7 +88,12 @@ class NANDImageMount(LoggingMixIn, Operations):
         fi = self.files[path]
         real_offset: int = fi['offset'] + offset
 
-        if fi['bis_key'] > 0:
+        if fi['offset'] + offset > fi['offset'] + fi['size']:
+            return b''
+        if offset + size > fi['size']:
+            size = fi['size'] - offset
+
+        if fi['bis_key'] >= 0:
             before = offset % 0x4000
             aligned_real_offset = real_offset - before
             aligned_offset = offset - before
