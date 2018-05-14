@@ -2,12 +2,12 @@
 
 FUSE (Filesystem in Userspace) scripts for Nintendo Switch files
 
-In development. Requires Python 3.6.1+. Supports Windows (via WinFsp), macOS (via FUSE for macOS) & Linux.
+In development. Requires Python 3.6.1+. Supports Windows (via [WinFsp](http://www.secfs.net/winfsp/)), macOS (via [FUSE for macOS](https://osxfuse.github.io)) & Linux.
 
 NAND currently requires a keys text file from biskeydump.
 
 # Known issues
-* PRODINFO/PRODINFOF not decrypted properly
+* None currently
 
 # Usage
 * Install Python 3.6.1 or later.
