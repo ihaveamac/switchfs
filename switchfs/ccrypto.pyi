@@ -1,2 +1,2 @@
-def _xtsn_decrypt(buf: bytes, key: bytes, tweak: bytes, sectoroffsethi: int, sectoroffsetlo: int,
+def _xtsn_decrypt(buf: bytes, key: bytes, tweak: bytes, sector_offset_hi: int, sector_offset_lo: int,
                   sector_size: int) -> bytes: ...

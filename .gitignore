@@ -81,3 +81,6 @@ fabric.properties
 
 *.pyd
 *.so
+
+# not actually used for anything but CLion suggestions, because it depends on CMake...
+CMakeLists.txt

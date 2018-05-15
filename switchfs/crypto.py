@@ -4,7 +4,7 @@ if TYPE_CHECKING:
     from typing import List
 
 try:
-    # noinspection PyProtectedMember,PyUnresolvedReferences
+    # noinspection PyProtectedMember
     from ccrypto import _xtsn_decrypt
 
 
@@ -14,12 +14,16 @@ try:
             self.tweak = tweak
 
         def decrypt(self, buf: bytes, sector_off: int, sector_size: int = 0x200) -> bytes:
+            return _xtsn_decrypt(buf, self.crypt, self.tweak, 0, sector_off, sector_size)
+
+        def decrypt_long(self, buf: bytes, sector_off: int, sector_size: int = 0x200) -> bytes:
             return _xtsn_decrypt(buf, self.crypt, self.tweak, (sector_off >> 64) & 0xFFFFFFFFFFFFFFFF,
                                  sector_off & 0xFFFFFFFFFFFFFFFF, sector_size)
 
 
 except ImportError:
     print("Warning: couldn't load ccrypto, loading slower Python module.")
+    _xtsn_decrypt = None
 
     import struct
     from Cryptodome.Cipher import AES
