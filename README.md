@@ -20,6 +20,7 @@ NAND currently requires a keys text file from [biskeydump](https://switchtools.s
   * `<py-cmd>` is `py -3` on Windows, `python3` on macOS/Linux
 
 # Stuff to do
+* Writing support (encrypt function implemented)
 * implement option parsing
 * more types
 * release binaries with pre-compiled extensions

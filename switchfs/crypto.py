@@ -5,7 +5,7 @@ if TYPE_CHECKING:
 
 try:
     # noinspection PyProtectedMember
-    from ccrypto import _xtsn_decrypt
+    from ccrypto import _xtsn_decrypt, _xtsn_encrypt
 
 
     class XTSN:
@@ -20,10 +20,18 @@ try:
             return _xtsn_decrypt(buf, self.crypt, self.tweak, (sector_off >> 64) & 0xFFFFFFFFFFFFFFFF,
                                  sector_off & 0xFFFFFFFFFFFFFFFF, sector_size)
 
+        def encrypt(self, buf: bytes, sector_off: int, sector_size: int = 0x200) -> bytes:
+            return _xtsn_encrypt(buf, self.crypt, self.tweak, 0, sector_off, sector_size)
+
+        def encrypt_long(self, buf: bytes, sector_off: int, sector_size: int = 0x200) -> bytes:
+            return _xtsn_encrypt(buf, self.crypt, self.tweak, (sector_off >> 64) & 0xFFFFFFFFFFFFFFFF,
+                                 sector_off & 0xFFFFFFFFFFFFFFFF, sector_size)
+
 
 except ImportError:
     print("Warning: couldn't load ccrypto, loading slower Python module.")
     _xtsn_decrypt = None
+    _xtsn_encrypt = None
 
     import struct
     from Cryptodome.Cipher import AES
@@ -70,6 +78,35 @@ except ImportError:
                     out.extend(blk)
 
             return bytes(out)
+
+        decrypt_long = decrypt
+
+        def encrypt(self, buf: bytes, sector_off: int, sector_size: int = 0x200) -> bytes:
+            out = bytearray()
+
+            p = struct.Struct('>QQ')
+
+            for i in range(len(buf) // sector_size):
+                pos = sector_off + i
+                tweak = self.c_enc(p.pack(0, pos))
+
+                for j in range(sector_size // 16):
+                    off = i * sector_size + j * 16
+
+                    blk = _xor(self.c_enc(_xor(buf[off:off + 16], tweak)), tweak)
+
+                    tweak = int.from_bytes(tweak, 'little')
+                    if tweak & (1 << 127):
+                        tweak = ((tweak & ~(1 << 127)) << 1) ^ 0x87
+                    else:
+                        tweak <<= 1
+                    tweak = tweak.to_bytes(16, 'little')
+
+                    out.extend(blk)
+
+            return bytes(out)
+
+        encrypt_long = encrypt
 
 
 def parse_biskeydump(keys: str):
