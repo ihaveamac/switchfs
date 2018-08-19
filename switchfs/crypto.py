@@ -5,7 +5,7 @@ if TYPE_CHECKING:
 
 try:
     # noinspection PyProtectedMember
-    from ccrypto import _xtsn_decrypt, _xtsn_encrypt
+    from .ccrypto import _xtsn_decrypt, _xtsn_encrypt
 
 
     class XTSN:
