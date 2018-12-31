@@ -12,7 +12,7 @@ NAND currently requires a keys text file from [biskeydump](https://switchtools.s
 # Usage
 * Install Python 3.6.1 or later.
 * Install development tools:
-  * Windows: Install [Visual C++ Build Tools (from Build Tools for Visual Studio 2017)](http://landinghub.visualstudio.com/visual-cpp-build-tools)
+  * Windows: Install [Visual C++ Build Tools (from Build Tools for Visual Studio 2017)](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
   * macOS: Install Xcode command line tools (`xcode-select --install`)
   * Linux: Install `python3-dev` (or similar) via your package manager
 * Install repo via pip, or clone/download and use `python3 setup.py install`
