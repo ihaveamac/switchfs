@@ -119,4 +119,9 @@ def parse_biskeydump(keys: str):
             if key_type not in {'crypt', 'tweak'}:
                 raise RuntimeError('unknown type')  # TODO: give this a special error
             bis_keys[key_idx][0 if key_type == 'crypt' else 1] = bytes.fromhex(data[2])
+        elif l.startswith('bis_key'):
+            keyinfo, key = l.split(" = ")
+            key_idx = int(keyinfo.split("_")[2])
+            bis_keys[key_idx][0] = bytes.fromhex(key[:32])
+            bis_keys[key_idx][1] = bytes.fromhex(key[32:])
     return bis_keys
