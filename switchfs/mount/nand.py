@@ -1,10 +1,12 @@
 import logging
 import os
+from collections import defaultdict
 from errno import ENOENT
 from math import ceil
 from stat import S_IFDIR, S_IFREG
-from sys import argv
+from sys import argv, exit
 from typing import TYPE_CHECKING
+from zlib import crc32
 
 from crypto import XTSN, parse_biskeydump
 
@@ -15,20 +17,13 @@ from . import _common as _c
 if TYPE_CHECKING:
     from typing import BinaryIO, List
 
-# TODO: gpt parsing instead of hard-coding offsets
-enc_partitions = {
-    'PRODINFO': (0, 0x4400, 0x3FBC00),
-    'PRODINFOF': (0, 0x400000, 0x400000),
-    'BCPKG2-1-Normal-Main': (-1, 0x800000, 0x800000),
-    'BCPKG2-2-Normal-Sub': (-1, 0x1000000, 0x800000),
-    'BCPKG2-3-SafeMode-Main': (-1, 0x1800000, 0x800000),
-    'BCPKG2-4-SafeMode-Sub': (-1, 0x2000000, 0x800000),
-    'BCPKG2-5-Repair-Main': (-1, 0x2800000, 0x800000),
-    'BCPKG2-6-Repair-Sub': (-1, 0x3000000, 0x800000),
-    'SAFE': (1, 0x3800000, 0x4000000),
-    'SYSTEM': (2, 0x7800000, 0xA0000000),
-    'USER': (3, 0xA7800000, 0x680000000)
-}
+bis_key_ids = defaultdict(lambda: -1, {
+    'PRODINFO': 0,
+    'PRODINFOF': 0,
+    'SAFE': 1,
+    'SYSTEM': 2,
+    'USER': 3
+})
 
 
 # TODO: writing?
@@ -48,9 +43,35 @@ class NANDImageMount(LoggingMixIn, Operations):
             self.crypto[x] = XTSN(*bis_keys[x])
 
         self.files = {}
-        for n, o in enc_partitions.items():
-            self.files[f'/{n.lower()}.img'] = {'real_filename': n + '.img', 'offset': o[1], 'size': o[2],
-                                               'bis_key': o[0]}
+        nand_fp.seek(0x200)
+        gpt_header = nand_fp.read(0x5C)
+        if gpt_header[0:8] != b'EFI PART':
+            exit('GPT header magic not found.')
+
+        header_to_hash = gpt_header[0:0x10] + b'\0\0\0\0' + gpt_header[0x14:]
+        crc_expected = int.from_bytes(gpt_header[0x10:0x14], 'little')
+        crc_got = crc32(header_to_hash) & 0xFFFFFFFF
+        if crc_got != crc_expected:
+            exit(f'GPT header crc32 mismatch (expected {crc_expected:08x}, got {crc_got:08x})')
+
+        gpt_part_start = int.from_bytes(gpt_header[0x48:0x50], 'little')
+        gpt_part_count = int.from_bytes(gpt_header[0x50:0x54], 'little')
+        gpt_part_entry_size = int.from_bytes(gpt_header[0x54:0x58], 'little')
+
+        nand_fp.seek(gpt_part_start * 0x200)
+        gpt_part_full_raw = nand_fp.read(gpt_part_count * gpt_part_entry_size)
+        gpt_part_crc_expected = int.from_bytes(gpt_header[0x58:0x5C], 'little')
+        gpt_part_crc_got = crc32(gpt_part_full_raw) & 0xFFFFFFFF
+        if gpt_part_crc_got != gpt_part_crc_expected:
+            exit(f'GPT Partition table crc32 mismatch '
+                 f'(expected {gpt_part_crc_expected:08x}, got {gpt_part_crc_got:08x})')
+        gpt_parts_raw = [gpt_part_full_raw[i:i + gpt_part_entry_size] for i in range(0, len(gpt_part_full_raw),
+                                                                                     gpt_part_entry_size)]
+        for part in gpt_parts_raw:
+            name = part[0x38:].decode('utf-16le').rstrip('\0')
+            self.files[f'/{name.lower()}.img'] = {'real_filename': name + '.img', 'bis_key': bis_key_ids[name],
+                                                  'start': int.from_bytes(part[0x20:0x28], 'little') * 0x200,
+                                                  'end': (int.from_bytes(part[0x28:0x30], 'little') + 1) * 0x200}
 
         self.f = nand_fp
 
@@ -68,8 +89,9 @@ class NANDImageMount(LoggingMixIn, Operations):
         if path == '/':
             st = {'st_mode': (S_IFDIR | (0o555 if self.readonly else 0o777)), 'st_nlink': 2}
         elif path in self.files:
+            p = self.files[path]
             st = {'st_mode': (S_IFREG | (0o444 if self.readonly else 0o666)),
-                  'st_size': self.files[path]['size'], 'st_nlink': 1}
+                  'st_size': p['end'] - p['start'], 'st_nlink': 1}
         else:
             raise FuseOSError(ENOENT)
         return {**st, **self.g_stat, 'st_uid': uid, 'st_gid': gid}
@@ -86,12 +108,12 @@ class NANDImageMount(LoggingMixIn, Operations):
     @_c.ensure_lower_path
     def read(self, path: str, size: int, offset: int, fh):
         fi = self.files[path]
-        real_offset: int = fi['offset'] + offset
+        real_offset: int = fi['start'] + offset
 
-        if fi['offset'] + offset > fi['offset'] + fi['size']:
+        if fi['start'] + offset > fi['end']:
             return b''
-        if offset + size > fi['size']:
-            size = fi['size'] - offset
+        if offset + size > fi['end']:
+            size = fi['end'] - offset
 
         if fi['bis_key'] >= 0:
             before = offset % 0x4000
