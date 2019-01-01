@@ -29,7 +29,7 @@ NAND currently requires a keys text file from [biskeydump](https://switchtools.s
 # License/Credits
 `switchfs` is under the MIT license. fusepy is under the ISC license ([taken from `setup.py`](https://github.com/fusepy/fusepy/blob/b5f87a1855119d55c755c2c4c8b1da346365629d/setup.py)).
 
-`switchfs/aes.c` and `switchfs/aes.h` are from @kokke's [tiny-AES-C](https://github.com/kokke/tiny-AES-c) commit `ee68cb8`, and uses The Unlicense.
+`switchfs/aes.c` and `switchfs/aes.h` are from @openluopworld's [aes_128](https://github.com/openluopworld/aes_128) commit `b5b7f55`, and uses the MIT License.
 
 `switchfs/crypto.py` AES-XTS part is taken from @plutooo's [crypto gist](https://gist.github.com/plutooo/fd4b22e7f533e780c1759057095d7896), modified for Python 3 compatibility and optimization.
 

@@ -84,18 +84,19 @@ inline static void shift128(u8 *foo) {
 void
 aes_xtsn_decrypt(u8 *buffer, u64 len, u8 *key, u8 *tweakin, u64 sectoroffsethi, u64 sectoroffsetlo, u32 sector_size) {
     u64 i;
-    struct AES_ctx _key, _tweak;
-    AES_init_ctx(&_key, key);
-    AES_init_ctx(&_tweak, tweakin);
+    u8 roundkeys_key[0xB0] = {0};
+    u8 roundkeys_tweak[0xB0] = {0};
+    aes_key_schedule_128(key, roundkeys_key);
+    aes_key_schedule_128(tweakin, roundkeys_tweak);
     u64 position[2] = {sectoroffsetlo, sectoroffsethi};
 
     for (i = 0; i < (len / (u64) sector_size); i++) {
         union bigint128 tweak = geniv(position);
-        AES_ECB_encrypt(&_tweak, tweak.value8);
+        aes_encrypt_128(roundkeys_tweak, tweak.value8, tweak.value8);
         unsigned int j;
         for (j = 0; j < sector_size / 16; j++) {
             xor128((u64 *) buffer, tweak.value64);
-            AES_ECB_decrypt(&_key, buffer);
+            aes_decrypt_128(roundkeys_key, buffer, buffer);
             xor128((u64 *) buffer, tweak.value64);
             int flag = tweak.value8[15] & 0x80;
             shift128(tweak.value8);
@@ -109,10 +110,10 @@ aes_xtsn_decrypt(u8 *buffer, u64 len, u8 *key, u8 *tweakin, u64 sectoroffsethi, 
     if(remain_len) {
         union bigint128 tweak = geniv(position);
         u64 j;
-        AES_ECB_encrypt(&_tweak, tweak.value8);
+        aes_encrypt_128(roundkeys_tweak, tweak.value8, tweak.value8);
         for (j = 0; j < remain_len / 16LLU; j++) {
             xor128((u64 *) buffer, tweak.value64);
-            AES_ECB_decrypt(&_key, buffer);
+            aes_decrypt_128(roundkeys_key, buffer, buffer);
             xor128((u64 *) buffer, tweak.value64);
             int flag = tweak.value8[15] & 0x80;
             shift128(tweak.value8);
@@ -125,18 +126,19 @@ aes_xtsn_decrypt(u8 *buffer, u64 len, u8 *key, u8 *tweakin, u64 sectoroffsethi, 
 void
 aes_xtsn_encrypt(u8 *buffer, u64 len, u8 *key, u8 *tweakin, u64 sectoroffsethi, u64 sectoroffsetlo, u32 sector_size) {
     u64 i;
-    struct AES_ctx _key, _tweak;
-    AES_init_ctx(&_key, key);
-    AES_init_ctx(&_tweak, tweakin);
+    u8 roundkeys_key[0xB0] = {0};
+    u8 roundkeys_tweak[0xB0] = {0};
+    aes_key_schedule_128(key, roundkeys_key);
+    aes_key_schedule_128(tweakin, roundkeys_tweak);
     u64 position[2] = {sectoroffsetlo, sectoroffsethi};
 
     for (i = 0; i < (len / (u64) sector_size); i++) {
         union bigint128 tweak = geniv(position);
-        AES_ECB_encrypt(&_tweak, tweak.value8);
+        aes_encrypt_128(roundkeys_tweak, tweak.value8, tweak.value8);
         unsigned int j;
         for (j = 0; j < sector_size / 16; j++) {
             xor128((u64 *) buffer, tweak.value64);
-            AES_ECB_encrypt(&_key, buffer);
+            aes_encrypt_128(roundkeys_key, buffer, buffer);
             xor128((u64 *) buffer, tweak.value64);
             int flag = tweak.value8[15] & 0x80;
             shift128(tweak.value8);
@@ -150,10 +152,10 @@ aes_xtsn_encrypt(u8 *buffer, u64 len, u8 *key, u8 *tweakin, u64 sectoroffsethi, 
     if(remain_len) {
         union bigint128 tweak = geniv(position);
         u64 j;
-        AES_ECB_encrypt(&_tweak, tweak.value8);
+        aes_encrypt_128(roundkeys_tweak, tweak.value8, tweak.value8);
         for (j = 0; j < remain_len / 16LLU; j++) {
             xor128((u64 *) buffer, tweak.value64);
-            AES_ECB_encrypt(&_key, buffer);
+            aes_encrypt_128(roundkeys_key, buffer, buffer);
             xor128((u64 *) buffer, tweak.value64);
             int flag = tweak.value8[15] & 0x80;
             shift128(tweak.value8);
