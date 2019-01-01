@@ -190,6 +190,10 @@ static PyObject *py_xtsn_schedule(PyObject *self, PyObject *args) {
     aes_xtsn_schedule_128(key.buf, tweak.buf, roundkeys_x2);
     buf = PyBytes_FromStringAndSize((char * ) roundkeys_x2, 0xB0 * 2);
 
+    if (!buf) {
+        PyErr_SetString(PyExc_MemoryError, "Python doesn't have memory for the buffer.");
+    }
+
 fail:
     PyBuffer_Release(&key);
     PyBuffer_Release(&tweak);
@@ -221,6 +225,11 @@ static PyObject *py_xtsn_decrypt(PyObject *self, PyObject *args) {
     }
 
     buf = PyBytes_FromStringAndSize(orig_buf.buf, orig_buf.len);
+
+    if (!buf) {
+        PyErr_SetString(PyExc_MemoryError, "Python doesn't have memory for the buffer.");
+        goto fail;
+    }
 
     aes_xtsn_decrypt((u8 *) PyBytes_AsString(buf), (u64) orig_buf.len, roundkeys_x2.buf, sectoroffsethi,
                      sectoroffsetlo, sector_size);
@@ -256,6 +265,11 @@ static PyObject *py_xtsn_encrypt(PyObject *self, PyObject *args) {
     }
 
     buf = PyBytes_FromStringAndSize(orig_buf.buf, orig_buf.len);
+
+    if (!buf) {
+        PyErr_SetString(PyExc_MemoryError, "Python doesn't have memory for the buffer.");
+        goto fail;
+    }
 
     aes_xtsn_encrypt((u8 *) PyBytes_AsString(buf), (u64) orig_buf.len, roundkeys_x2.buf, sectoroffsethi,
                      sectoroffsetlo, sector_size);
