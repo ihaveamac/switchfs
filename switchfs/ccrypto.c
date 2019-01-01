@@ -6,10 +6,6 @@
 #include <string.h>
 #include <stdbool.h>
 
-#define ECB 1
-#define CBC 0
-#define CTR 0
-
 #include "aes.h"
 
 typedef uint8_t u8;
