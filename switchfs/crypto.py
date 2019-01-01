@@ -3,11 +3,21 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import List
 
+imported_ccrypto = False
 try:
     # noinspection PyProtectedMember
-    from ccrypto import _xtsn_decrypt, _xtsn_encrypt
+    from .ccrypto import _xtsn_decrypt, _xtsn_encrypt
+    imported_ccrypto = True
+except ImportError:
+    try:
+        from ccrypto import _xtsn_decrypt, _xtsn_decrypt
+        imported_ccrypto = True
+    except ImportError:
+        print("Warning: couldn't load ccrypto, loading slower Python module.")
+        _xtsn_decrypt = None
+        _xtsn_encrypt = None
 
-
+if imported_ccrypto:
     class XTSN:
         def __init__(self, crypt: bytes, tweak: bytes):
             self.crypt = crypt
@@ -27,19 +37,12 @@ try:
             return _xtsn_encrypt(buf, self.crypt, self.tweak, (sector_off >> 64) & 0xFFFFFFFFFFFFFFFF,
                                  sector_off & 0xFFFFFFFFFFFFFFFF, sector_size)
 
-
-except ImportError:
-    print("Warning: couldn't load ccrypto, loading slower Python module.")
-    _xtsn_decrypt = None
-    _xtsn_encrypt = None
-
+else:
     import struct
     from Cryptodome.Cipher import AES
 
-
     def _xor(s1, s2):
         return bytes(a ^ b for a, b in zip(s1, s2))
-
 
     # taken from @plutooo's crypto gist (https://gist.github.com/plutooo/fd4b22e7f533e780c1759057095d7896),
     #   modified for Python 3 compatibility and optimization
