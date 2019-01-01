@@ -105,6 +105,21 @@ aes_xtsn_decrypt(u8 *buffer, u64 len, u8 *key, u8 *tweakin, u64 sectoroffsethi, 
         if (position[0] > (position[0] + 1LLU)) position[1] += 1LLU; //if overflow, we gotta
         position[0] += 1LLU;
     }
+    u64 remain_len = (len % (u64) sector_size);
+    if(remain_len) {
+        union bigint128 tweak = geniv(position);
+        u64 j;
+        AES_ECB_encrypt(&_tweak, tweak.value8);
+        for (j = 0; j < remain_len / 16LLU; j++) {
+            xor128((u64 *) buffer, tweak.value64);
+            AES_ECB_decrypt(&_key, buffer);
+            xor128((u64 *) buffer, tweak.value64);
+            int flag = tweak.value8[15] & 0x80;
+            shift128(tweak.value8);
+            if (flag) tweak.value8[0] ^= 0x87;
+            buffer += 16;
+        }
+    }
 }
 
 void
@@ -131,6 +146,21 @@ aes_xtsn_encrypt(u8 *buffer, u64 len, u8 *key, u8 *tweakin, u64 sectoroffsethi, 
         if (position[0] > (position[0] + 1LLU)) position[1] += 1LLU; //if overflow, we gotta
         position[0] += 1LLU;
     }
+    u64 remain_len = (len % (u64) sector_size);
+    if(remain_len) {
+        union bigint128 tweak = geniv(position);
+        u64 j;
+        AES_ECB_encrypt(&_tweak, tweak.value8);
+        for (j = 0; j < remain_len / 16LLU; j++) {
+            xor128((u64 *) buffer, tweak.value64);
+            AES_ECB_encrypt(&_key, buffer);
+            xor128((u64 *) buffer, tweak.value64);
+            int flag = tweak.value8[15] & 0x80;
+            shift128(tweak.value8);
+            if (flag) tweak.value8[0] ^= 0x87;
+            buffer += 16;
+        }
+    }
 }
 
 // python stuff
@@ -149,6 +179,16 @@ static PyObject *py_xtsn_decrypt(PyObject *self, PyObject *args) {
 
     if (tweak.len != 16) {
         PyErr_SetString(PyExc_ValueError, "tweak len is not 16");
+        return NULL;
+    }
+
+    if (orig_buf.len % 16) {
+        PyErr_SetString(PyExc_ValueError, "length not divisable by 16");
+        return NULL;
+    }
+
+    if (sector_size % 16) {
+        PyErr_SetString(PyExc_ValueError, "sector size not divisable by 16");
         return NULL;
     }
 
@@ -179,6 +219,16 @@ static PyObject *py_xtsn_encrypt(PyObject *self, PyObject *args) {
 
     if (tweak.len != 16) {
         PyErr_SetString(PyExc_ValueError, "tweak len is not 16");
+        return NULL;
+    }
+
+    if (orig_buf.len % 16) {
+        PyErr_SetString(PyExc_ValueError, "length not divisable by 16");
+        return NULL;
+    }
+
+    if (sector_size % 16) {
+        PyErr_SetString(PyExc_ValueError, "sector size not divisable by 16");
         return NULL;
     }
 
