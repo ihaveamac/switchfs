@@ -6,35 +6,35 @@ if TYPE_CHECKING:
 imported_ccrypto = False
 try:
     # noinspection PyProtectedMember
-    from .ccrypto import _xtsn_decrypt, _xtsn_encrypt
+    from .ccrypto import _xtsn_schedule, _xtsn_decrypt, _xtsn_encrypt
     imported_ccrypto = True
 except ImportError:
     try:
-        from ccrypto import _xtsn_decrypt, _xtsn_decrypt
+        from ccrypto import _xtsn_schedule, _xtsn_decrypt, _xtsn_decrypt
         imported_ccrypto = True
     except ImportError:
         print("Warning: couldn't load ccrypto, loading slower Python module.")
+        _xtsn_schedule = None
         _xtsn_decrypt = None
         _xtsn_encrypt = None
 
 if imported_ccrypto:
     class XTSN:
         def __init__(self, crypt: bytes, tweak: bytes):
-            self.crypt = crypt
-            self.tweak = tweak
+            self.roundkeys_x2 = _xtsn_schedule(crypt, tweak)
 
         def decrypt(self, buf: bytes, sector_off: int, sector_size: int = 0x200) -> bytes:
-            return _xtsn_decrypt(buf, self.crypt, self.tweak, 0, sector_off, sector_size)
+            return _xtsn_decrypt(buf, self.roundkeys_x2, 0, sector_off, sector_size)
 
         def decrypt_long(self, buf: bytes, sector_off: int, sector_size: int = 0x200) -> bytes:
-            return _xtsn_decrypt(buf, self.crypt, self.tweak, (sector_off >> 64) & 0xFFFFFFFFFFFFFFFF,
+            return _xtsn_decrypt(buf, self.roundkeys_x2, (sector_off >> 64) & 0xFFFFFFFFFFFFFFFF,
                                  sector_off & 0xFFFFFFFFFFFFFFFF, sector_size)
 
         def encrypt(self, buf: bytes, sector_off: int, sector_size: int = 0x200) -> bytes:
-            return _xtsn_encrypt(buf, self.crypt, self.tweak, 0, sector_off, sector_size)
+            return _xtsn_encrypt(buf, self.roundkeys_x2, 0, sector_off, sector_size)
 
         def encrypt_long(self, buf: bytes, sector_off: int, sector_size: int = 0x200) -> bytes:
-            return _xtsn_encrypt(buf, self.crypt, self.tweak, (sector_off >> 64) & 0xFFFFFFFFFFFFFFFF,
+            return _xtsn_encrypt(buf, self.roundkeys_x2, (sector_off >> 64) & 0xFFFFFFFFFFFFFFFF,
                                  sector_off & 0xFFFFFFFFFFFFFFFF, sector_size)
 
 else:

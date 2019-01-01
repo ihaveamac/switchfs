@@ -81,13 +81,17 @@ inline static void shift128(u8 *foo) {
     }
 }
 
+inline static void
+aes_xtsn_schedule_128(u8* key, u8* tweakin, u8* roundkeys_x2) {
+    aes_key_schedule_128(key, roundkeys_x2);
+    aes_key_schedule_128(tweakin, roundkeys_x2 + 0xB0);
+}
+
 void
-aes_xtsn_decrypt(u8 *buffer, u64 len, u8 *key, u8 *tweakin, u64 sectoroffsethi, u64 sectoroffsetlo, u32 sector_size) {
+aes_xtsn_decrypt(u8 *buffer, u64 len, u8 *roundkeys_x2, u64 sectoroffsethi, u64 sectoroffsetlo, u32 sector_size) {
     u64 i;
-    u8 roundkeys_key[0xB0] = {0};
-    u8 roundkeys_tweak[0xB0] = {0};
-    aes_key_schedule_128(key, roundkeys_key);
-    aes_key_schedule_128(tweakin, roundkeys_tweak);
+    u8 *roundkeys_key = roundkeys_x2;
+    u8 *roundkeys_tweak = roundkeys_x2 + 0xB0;
     u64 position[2] = {sectoroffsetlo, sectoroffsethi};
 
     for (i = 0; i < (len / (u64) sector_size); i++) {
@@ -124,12 +128,10 @@ aes_xtsn_decrypt(u8 *buffer, u64 len, u8 *key, u8 *tweakin, u64 sectoroffsethi, 
 }
 
 void
-aes_xtsn_encrypt(u8 *buffer, u64 len, u8 *key, u8 *tweakin, u64 sectoroffsethi, u64 sectoroffsetlo, u32 sector_size) {
+aes_xtsn_encrypt(u8 *buffer, u64 len, u8 *roundkeys_x2, u64 sectoroffsethi, u64 sectoroffsetlo, u32 sector_size) {
     u64 i;
-    u8 roundkeys_key[0xB0] = {0};
-    u8 roundkeys_tweak[0xB0] = {0};
-    aes_key_schedule_128(key, roundkeys_key);
-    aes_key_schedule_128(tweakin, roundkeys_tweak);
+    u8 *roundkeys_key = roundkeys_x2;
+    u8 *roundkeys_tweak = roundkeys_x2 + 0xB0;
     u64 position[2] = {sectoroffsetlo, sectoroffsethi};
 
     for (i = 0; i < (len / (u64) sector_size); i++) {
@@ -166,90 +168,109 @@ aes_xtsn_encrypt(u8 *buffer, u64 len, u8 *key, u8 *tweakin, u64 sectoroffsethi, 
 }
 
 // python stuff
-static PyObject *py_xtsn_decrypt(PyObject *self, PyObject *args) {
-    Py_buffer orig_buf, key, tweak;
-    unsigned long long sectoroffsethi, sectoroffsetlo;
-    u32 sector_size;
+static PyObject *py_xtsn_schedule(PyObject *self, PyObject *args) {
+    Py_buffer key, tweak;
+    PyObject *buf = NULL;
 
-    if (!PyArg_ParseTuple(args, "y*y*y*KKk", &orig_buf, &key, &tweak, &sectoroffsethi, &sectoroffsetlo, &sector_size))
+    if (!PyArg_ParseTuple(args, "y*y*", &key, &tweak)) {
         return NULL;
+    }
 
     if (key.len != 16) {
         PyErr_SetString(PyExc_ValueError, "key len is not 16");
-        return NULL;
+        goto fail;
     }
 
     if (tweak.len != 16) {
         PyErr_SetString(PyExc_ValueError, "tweak len is not 16");
+        goto fail;
+    }
+
+    u8 roundkeys_x2[0xB0 * 2] = {0};
+    aes_xtsn_schedule_128(key.buf, tweak.buf, roundkeys_x2);
+    buf = PyBytes_FromStringAndSize((char * ) roundkeys_x2, 0xB0 * 2);
+
+fail:
+    PyBuffer_Release(&key);
+    PyBuffer_Release(&tweak);
+    return buf;
+}
+
+static PyObject *py_xtsn_decrypt(PyObject *self, PyObject *args) {
+    Py_buffer orig_buf, roundkeys_x2;
+    unsigned long long sectoroffsethi, sectoroffsetlo;
+    u32 sector_size;
+    PyObject *buf = NULL;
+
+    if (!PyArg_ParseTuple(args, "y*y*KKk", &orig_buf, &roundkeys_x2, &sectoroffsethi, &sectoroffsetlo, &sector_size))
         return NULL;
+
+    if (roundkeys_x2.len != 0xB0 * 2) {
+        PyErr_SetString(PyExc_ValueError, "roundkeys_x2 len is not 16");
+        goto fail;
     }
 
     if (orig_buf.len % 16) {
         PyErr_SetString(PyExc_ValueError, "length not divisable by 16");
-        return NULL;
+        goto fail;
     }
 
     if (sector_size % 16) {
         PyErr_SetString(PyExc_ValueError, "sector size not divisable by 16");
-        return NULL;
+        goto fail;
     }
 
-    PyObject *buf = PyBytes_FromStringAndSize(orig_buf.buf, orig_buf.len);
+    buf = PyBytes_FromStringAndSize(orig_buf.buf, orig_buf.len);
 
-    aes_xtsn_decrypt((u8 *) PyBytes_AsString(buf), (u64) orig_buf.len, key.buf, tweak.buf, sectoroffsethi,
+    aes_xtsn_decrypt((u8 *) PyBytes_AsString(buf), (u64) orig_buf.len, roundkeys_x2.buf, sectoroffsethi,
                      sectoroffsetlo, sector_size);
 
+fail:
     PyBuffer_Release(&orig_buf);
-    PyBuffer_Release(&key);
-    PyBuffer_Release(&tweak);
-
+    PyBuffer_Release(&roundkeys_x2);
     return buf;
 }
 
 static PyObject *py_xtsn_encrypt(PyObject *self, PyObject *args) {
-    Py_buffer orig_buf, key, tweak;
+    Py_buffer orig_buf, roundkeys_x2;
     unsigned long long sectoroffsethi, sectoroffsetlo;
     u32 sector_size;
+    PyObject *buf = NULL;
 
-    if (!PyArg_ParseTuple(args, "y*y*y*KKk", &orig_buf, &key, &tweak, &sectoroffsethi, &sectoroffsetlo, &sector_size))
+    if (!PyArg_ParseTuple(args, "y*y*KKk", &orig_buf, &roundkeys_x2, &sectoroffsethi, &sectoroffsetlo, &sector_size))
         return NULL;
 
-    if (key.len != 16) {
-        PyErr_SetString(PyExc_ValueError, "key len is not 16");
-        return NULL;
-    }
-
-    if (tweak.len != 16) {
-        PyErr_SetString(PyExc_ValueError, "tweak len is not 16");
-        return NULL;
+    if (roundkeys_x2.len != 0xB0 * 2) {
+        PyErr_SetString(PyExc_ValueError, "roundkeys_x2 len is not 16");
+        goto fail;
     }
 
     if (orig_buf.len % 16) {
         PyErr_SetString(PyExc_ValueError, "length not divisable by 16");
-        return NULL;
+        goto fail;
     }
 
     if (sector_size % 16) {
         PyErr_SetString(PyExc_ValueError, "sector size not divisable by 16");
-        return NULL;
+        goto fail;
     }
 
-    PyObject *buf = PyBytes_FromStringAndSize(orig_buf.buf, orig_buf.len);
+    buf = PyBytes_FromStringAndSize(orig_buf.buf, orig_buf.len);
 
-    aes_xtsn_encrypt((u8 *) PyBytes_AsString(buf), (u64) orig_buf.len, key.buf, tweak.buf, sectoroffsethi,
+    aes_xtsn_encrypt((u8 *) PyBytes_AsString(buf), (u64) orig_buf.len, roundkeys_x2.buf, sectoroffsethi,
                      sectoroffsetlo, sector_size);
 
+fail:
     PyBuffer_Release(&orig_buf);
-    PyBuffer_Release(&key);
-    PyBuffer_Release(&tweak);
-
+    PyBuffer_Release(&roundkeys_x2);
     return buf;
 }
 
 static PyMethodDef ccrypto_methods[] = {
-    {"_xtsn_decrypt", py_xtsn_decrypt, METH_VARARGS, NULL},
-    {"_xtsn_encrypt", py_xtsn_encrypt, METH_VARARGS, NULL},
-    {NULL, NULL, 0,                                  NULL}
+    {"_xtsn_schedule", py_xtsn_schedule, METH_VARARGS, NULL},
+    {"_xtsn_decrypt",  py_xtsn_decrypt,  METH_VARARGS, NULL},
+    {"_xtsn_encrypt",  py_xtsn_encrypt,  METH_VARARGS, NULL},
+    {NULL,             NULL,             0,            NULL}
 };
 
 static struct PyModuleDef ccrypto_module = {
