@@ -23,30 +23,53 @@ union bigint128 {
     u64 value64[2];
 };
 
+inline static u64 be64(u64 var) {
+    if(endian.islittle) {
+        #if defined __clang__ || defined __GNUC__
+        var = __builtin_bswap64(var);
+        #elif defined _MSC_VER
+        var = _byteswap_uint64(var);
+        #else
+        u64 tmp = var;
+        ((u8 *) &var)[7] = ((u8 *) &tmp)[0];
+        ((u8 *) &var)[6] = ((u8 *) &tmp)[1];
+        ((u8 *) &var)[5] = ((u8 *) &tmp)[2];
+        ((u8 *) &var)[4] = ((u8 *) &tmp)[3];
+        ((u8 *) &var)[3] = ((u8 *) &tmp)[4];
+        ((u8 *) &var)[2] = ((u8 *) &tmp)[5];
+        ((u8 *) &var)[1] = ((u8 *) &tmp)[6];
+        ((u8 *) &var)[0] = ((u8 *) &tmp)[7];
+        #endif
+    }
+    return var;
+}
+
+inline static u64 le64(u64 var) {
+    if(!endian.islittle) {
+        #if defined __clang__ || defined __GNUC__
+        var = __builtin_bswap64(var);
+        #elif defined _MSC_VER
+        var = _byteswap_uint64(var);
+        #else
+        //sacrifice code size for possible speed up
+        u64 tmp = var;
+        ((u8 *) &var)[7] = ((u8 *) &tmp)[0];
+        ((u8 *) &var)[6] = ((u8 *) &tmp)[1];
+        ((u8 *) &var)[5] = ((u8 *) &tmp)[2];
+        ((u8 *) &var)[4] = ((u8 *) &tmp)[3];
+        ((u8 *) &var)[3] = ((u8 *) &tmp)[4];
+        ((u8 *) &var)[2] = ((u8 *) &tmp)[5];
+        ((u8 *) &var)[1] = ((u8 *) &tmp)[6];
+        ((u8 *) &var)[0] = ((u8 *) &tmp)[7];
+        #endif
+    }
+    return var;
+}
+
 inline static union bigint128 geniv(u64 *pos) {
     union bigint128 out;
-    if (endian.islittle) {
-        //sacrifice code size for possible speed up
-        out.value8[15] = ((u8 *) pos)[0];
-        out.value8[14] = ((u8 *) pos)[1];
-        out.value8[13] = ((u8 *) pos)[2];
-        out.value8[12] = ((u8 *) pos)[3];
-        out.value8[11] = ((u8 *) pos)[4];
-        out.value8[10] = ((u8 *) pos)[5];
-        out.value8[9] = ((u8 *) pos)[6];
-        out.value8[8] = ((u8 *) pos)[7];
-        out.value8[7] = ((u8 *) pos)[8];
-        out.value8[6] = ((u8 *) pos)[9];
-        out.value8[5] = ((u8 *) pos)[10];
-        out.value8[4] = ((u8 *) pos)[11];
-        out.value8[3] = ((u8 *) pos)[12];
-        out.value8[2] = ((u8 *) pos)[13];
-        out.value8[1] = ((u8 *) pos)[14];
-        out.value8[0] = ((u8 *) pos)[15];
-    } else {
-        out.value64[1] = pos[0];
-        out.value64[0] = pos[1];
-    }
+    out.value64[1] = be64(pos[0]);
+    out.value64[0] = be64(pos[1]);
     return out;
 }
 
@@ -55,30 +78,10 @@ inline static void xor128(u64 *foo, u64 *bar) {
     foo[1] ^= bar[1];
 }
 
-inline static void shift128(u8 *foo) {
-    if (endian.islittle) {
-        //due to little endian order, we can do this
-        ((u64 *) foo)[1] = (((u64 *) foo)[1] << 1) | (((u64 *) foo)[0] >> 63);
-        ((u64 *) foo)[0] = (((u64 *) foo)[0] << 1);
-    } else {
-        //sacrifice code size for possible speed up
-        foo[15] = (foo[15] << 1) | (foo[14] >> 7);
-        foo[14] = (foo[14] << 1) | (foo[13] >> 7);
-        foo[13] = (foo[13] << 1) | (foo[12] >> 7);
-        foo[12] = (foo[12] << 1) | (foo[11] >> 7);
-        foo[11] = (foo[11] << 1) | (foo[10] >> 7);
-        foo[10] = (foo[10] << 1) | (foo[9] >> 7);
-        foo[9] = (foo[9] << 1) | (foo[8] >> 7);
-        foo[8] = (foo[8] << 1) | (foo[7] >> 7);
-        foo[7] = (foo[7] << 1) | (foo[6] >> 7);
-        foo[6] = (foo[6] << 1) | (foo[5] >> 7);
-        foo[5] = (foo[5] << 1) | (foo[4] >> 7);
-        foo[4] = (foo[4] << 1) | (foo[3] >> 7);
-        foo[3] = (foo[3] << 1) | (foo[2] >> 7);
-        foo[2] = (foo[2] << 1) | (foo[1] >> 7);
-        foo[1] = (foo[1] << 1) | (foo[0] >> 7);
-        foo[0] = (foo[0] << 1);
-    }
+inline static void shift128(u64 *foo) {
+    //with little endian order, we can do this
+    foo[1] = le64(le64(foo[1]) << 1) | (le64(foo[0]) >> 63);
+    foo[0] = le64(le64(foo[0]) << 1);
 }
 
 inline static void
@@ -103,7 +106,7 @@ aes_xtsn_decrypt(u8 *buffer, u64 len, u8 *roundkeys_x2, u64 sectoroffsethi, u64 
             aes_decrypt_128(roundkeys_key, buffer, buffer);
             xor128((u64 *) buffer, tweak.value64);
             int flag = tweak.value8[15] & 0x80;
-            shift128(tweak.value8);
+            shift128(tweak.value64);
             if (flag) tweak.value8[0] ^= 0x87;
             buffer += 16;
         }
@@ -120,7 +123,7 @@ aes_xtsn_decrypt(u8 *buffer, u64 len, u8 *roundkeys_x2, u64 sectoroffsethi, u64 
             aes_decrypt_128(roundkeys_key, buffer, buffer);
             xor128((u64 *) buffer, tweak.value64);
             int flag = tweak.value8[15] & 0x80;
-            shift128(tweak.value8);
+            shift128(tweak.value64);
             if (flag) tweak.value8[0] ^= 0x87;
             buffer += 16;
         }
@@ -143,7 +146,7 @@ aes_xtsn_encrypt(u8 *buffer, u64 len, u8 *roundkeys_x2, u64 sectoroffsethi, u64 
             aes_encrypt_128(roundkeys_key, buffer, buffer);
             xor128((u64 *) buffer, tweak.value64);
             int flag = tweak.value8[15] & 0x80;
-            shift128(tweak.value8);
+            shift128(tweak.value64);
             if (flag) tweak.value8[0] ^= 0x87;
             buffer += 16;
         }
@@ -160,7 +163,7 @@ aes_xtsn_encrypt(u8 *buffer, u64 len, u8 *roundkeys_x2, u64 sectoroffsethi, u64 
             aes_encrypt_128(roundkeys_key, buffer, buffer);
             xor128((u64 *) buffer, tweak.value64);
             int flag = tweak.value8[15] & 0x80;
-            shift128(tweak.value8);
+            shift128(tweak.value64);
             if (flag) tweak.value8[0] ^= 0x87;
             buffer += 16;
         }
