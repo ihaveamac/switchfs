@@ -1,5 +1,6 @@
 #include <Python.h>
 
+#include <cstdio>
 #include <inttypes.h>
 
 extern "C" {
@@ -113,18 +114,62 @@ public:
 
 template<void (*crypher)(const u8 *, const u8 *, u8 *)>
 class XTSN {
-public:
     SectorOffset sectoroffset;
     Buffer buf;
-    u32 sector_size;
-    u64 skipped_blocks;
+    u64 sector_size;
+    u64 skipped_bytes;
     u8 *roundkeys_key;
     u8 *roundkeys_tweak;
+    #ifdef DEBUGON
+    void Debug() { //debug printing.
+        if(sizeof(long) == sizeof(long long)) { //just trying to workaround a warning -w-
+            printf("Sector Offset (Lo, Hi): %lu, %lu\n"
+                "Buffer Length: %lu\n"
+                "Sector Size: %lu\n"
+                "Skipped Bytes: %lu\n\n",
+                *sectoroffset.Lo(), *sectoroffset.Hi(),
+                buf.len,
+                sector_size,
+                skipped_bytes);
+        } else {
+            printf("Sector Offset (Lo, Hi): %llu, %llu\n"
+                "Buffer Length: %llu\n"
+                "Sector Size: %llu\n"
+                "Skipped Bytes: %llu\n\n",
+                *sectoroffset.Lo(), *sectoroffset.Hi(),
+                buf.len,
+                sector_size,
+                skipped_bytes);
+        }
+        fflush(stdout);
+    }
+    #endif
     void Run() {
+        if(skipped_bytes) {
+            if(skipped_bytes / sector_size) {
+                sectoroffset.Step(skipped_bytes / sector_size);
+                skipped_bytes %= sector_size;
+            }
+            if(skipped_bytes) {
+                Tweak tweak(sectoroffset, roundkeys_tweak);
+                u64 i;
+                for (i = 0; i < (skipped_bytes / 16LLU); i++) {
+                    tweak.Update();
+                }
+                for (i = 0; i < ((sector_size - skipped_bytes) / 16LLU) && buf.len; i++) {
+                    buf ^= tweak;
+                    crypher(roundkeys_key, buf.ptr->v8, buf.ptr->v8);
+                    buf ^= tweak;
+                    tweak.Update();
+                    buf.Step();
+                }
+                sectoroffset.Step();
+            }
+        }
         while(buf.len) {
             Tweak tweak(sectoroffset, roundkeys_tweak);
-            u32 i;
-            for (i = 0; i < (sector_size / 16) && buf.len; i++) {
+            u64 i;
+            for (i = 0; i < (sector_size / 16LLU) && buf.len; i++) {
                 buf ^= tweak;
                 crypher(roundkeys_key, buf.ptr->v8, buf.ptr->v8);
                 buf ^= tweak;
@@ -134,7 +179,69 @@ public:
             sectoroffset.Step();
         }
     }
+public:
+    inline PyObject *PythonRun(PyObject *self, PyObject *args) {
+        Py_buffer orig_buf, roundkeys_x2;
+        PyObject *local_buf = NULL;
+
+        if (!PyArg_ParseTuple(args, "y*y*KKKK", &orig_buf, &roundkeys_x2,
+           sectoroffset.Hi(), sectoroffset.Lo(), &sector_size, &skipped_bytes))
+            return NULL;
+
+        if (orig_buf.len == 0) { //nothing to crypt i guess
+            local_buf = PyBytes_FromStringAndSize((char * ) NULL, 0);
+            if (!local_buf) {
+                PyErr_SetString(PyExc_MemoryError, "Python doesn't have memory for the buffer.");
+            }
+            goto end;
+        }
+
+        if (roundkeys_x2.len != 0xB0 * 2) {
+            PyErr_SetString(PyExc_ValueError, "roundkeys_x2 len is not 352");
+            goto end;
+        }
+
+        if (orig_buf.len % 16) {
+            PyErr_SetString(PyExc_ValueError, "length not divisable by 16");
+            goto end;
+        }
+
+        if (skipped_bytes % 16) {
+            PyErr_SetString(PyExc_ValueError, "skipped bytes not divisable by 16");
+            goto end;
+        }
+
+        if (sector_size % 16 || sector_size == 0) {
+            PyErr_SetString(PyExc_ValueError, sector_size == 0 ? "sector size must not be 0" : "sector size not divisable by 16");
+            goto end;
+        }
+
+        local_buf = PyBytes_FromStringAndSize((char * ) orig_buf.buf, orig_buf.len);
+
+        if (!local_buf) {
+            PyErr_SetString(PyExc_MemoryError, "Python doesn't have memory for the buffer.");
+            goto end;
+        }
+
+        roundkeys_key = (u8*)roundkeys_x2.buf;
+        roundkeys_tweak = (u8*)roundkeys_x2.buf + 0xB0;
+        buf.ptr = (bigint128 *) PyBytes_AsString(local_buf);
+        buf.len = (u64) orig_buf.len;
+
+        #ifdef DEBUGON
+        Debug();
+        #endif
+        Run();
+
+    end:
+        PyBuffer_Release(&orig_buf);
+        PyBuffer_Release(&roundkeys_x2);
+        return local_buf;
+    }
 };
+
+typedef XTSN<&aes_decrypt_128> XTSNDecrypt;
+typedef XTSN<&aes_encrypt_128> XTSNEncrypt;
 
 inline static void
 aes_xtsn_schedule_128(u8* key, u8* tweakin, u8* roundkeys_x2) {
@@ -176,121 +283,13 @@ end:
 }
 
 static PyObject *py_xtsn_decrypt(PyObject *self, PyObject *args) {
-    Py_buffer orig_buf, roundkeys_x2;
-    XTSN<&aes_decrypt_128> xtsn;
-    PyObject *buf = NULL;
-    u64 skipped_bytes;
-
-    if (!PyArg_ParseTuple(args, "y*y*KKkK", &orig_buf, &roundkeys_x2,
-       xtsn.sectoroffset.Hi(), xtsn.sectoroffset.Lo(), &xtsn.sector_size, &skipped_bytes))
-        return NULL;
-
-    if (orig_buf.len == 0) { //nothing to crypt i guess
-        buf = PyBytes_FromStringAndSize((char * ) NULL, 0);
-        if (!buf) {
-            PyErr_SetString(PyExc_MemoryError, "Python doesn't have memory for the buffer.");
-        }
-        goto end;
-    }
-
-    if (roundkeys_x2.len != 0xB0 * 2) {
-        PyErr_SetString(PyExc_ValueError, "roundkeys_x2 len is not 352");
-        goto end;
-    }
-
-    if (orig_buf.len % 16) {
-        PyErr_SetString(PyExc_ValueError, "length not divisable by 16");
-        goto end;
-    }
-
-    if (skipped_bytes % 16) {
-        PyErr_SetString(PyExc_ValueError, "skipped bytes not divisable by 16");
-        goto end;
-    }
-
-    if (xtsn.sector_size % 16 || xtsn.sector_size == 0) {
-        PyErr_SetString(PyExc_ValueError, xtsn.sector_size == 0 ? "sector size must not be 0" : "sector size not divisable by 16");
-        goto end;
-    }
-
-    buf = PyBytes_FromStringAndSize((char * ) orig_buf.buf, orig_buf.len);
-
-    if (!buf) {
-        PyErr_SetString(PyExc_MemoryError, "Python doesn't have memory for the buffer.");
-        goto end;
-    }
-
-    xtsn.roundkeys_key = (u8*)roundkeys_x2.buf;
-    xtsn.roundkeys_tweak = (u8*)roundkeys_x2.buf + 0xB0;
-    xtsn.buf.ptr = (bigint128 *) PyBytes_AsString(buf);
-    xtsn.buf.len = (u64) orig_buf.len;
-    xtsn.skipped_blocks = skipped_bytes / 16LLU;
-
-    xtsn.Run();
-
-end:
-    PyBuffer_Release(&orig_buf);
-    PyBuffer_Release(&roundkeys_x2);
-    return buf;
+    XTSNDecrypt xtsn;
+    return xtsn.PythonRun(self, args);
 }
 
 static PyObject *py_xtsn_encrypt(PyObject *self, PyObject *args) {
-    Py_buffer orig_buf, roundkeys_x2;
-    XTSN<&aes_encrypt_128> xtsn;
-    PyObject *buf = NULL;
-    u64 skipped_bytes;
-
-    if (!PyArg_ParseTuple(args, "y*y*KKkK", &orig_buf, &roundkeys_x2,
-       xtsn.sectoroffset.Hi(), xtsn.sectoroffset.Lo(), &xtsn.sector_size, &skipped_bytes))
-        return NULL;
-
-    if (orig_buf.len == 0) { //nothing to crypt i guess
-        buf = PyBytes_FromStringAndSize((char * ) NULL, 0);
-        if (!buf) {
-            PyErr_SetString(PyExc_MemoryError, "Python doesn't have memory for the buffer.");
-        }
-        goto end;
-    }
-
-    if (roundkeys_x2.len != 0xB0 * 2) {
-        PyErr_SetString(PyExc_ValueError, "roundkeys_x2 len is not 352");
-        goto end;
-    }
-
-    if (orig_buf.len % 16) {
-        PyErr_SetString(PyExc_ValueError, "length not divisable by 16");
-        goto end;
-    }
-
-    if (skipped_bytes % 16) {
-        PyErr_SetString(PyExc_ValueError, "skipped bytes not divisable by 16");
-        goto end;
-    }
-
-    if (xtsn.sector_size % 16 || xtsn.sector_size == 0) {
-        PyErr_SetString(PyExc_ValueError, xtsn.sector_size == 0 ? "sector size must not be 0" : "sector size not divisable by 16");
-        goto end;
-    }
-
-    buf = PyBytes_FromStringAndSize((char * ) orig_buf.buf, orig_buf.len);
-
-    if (!buf) {
-        PyErr_SetString(PyExc_MemoryError, "Python doesn't have memory for the buffer.");
-        goto end;
-    }
-
-    xtsn.roundkeys_key = (u8*)roundkeys_x2.buf;
-    xtsn.roundkeys_tweak = (u8*)roundkeys_x2.buf + 0xB0;
-    xtsn.buf.ptr = (bigint128 *) PyBytes_AsString(buf);
-    xtsn.buf.len = (u64) orig_buf.len;
-    xtsn.skipped_blocks = skipped_bytes / 16LLU;
-
-    xtsn.Run();
-
-end:
-    PyBuffer_Release(&orig_buf);
-    PyBuffer_Release(&roundkeys_x2);
-    return buf;
+    XTSNEncrypt xtsn;
+    return xtsn.PythonRun(self, args);
 }
 
 static PyMethodDef ccrypto_methods[] = {
