@@ -122,25 +122,14 @@ class XTSN {
     u8 *roundkeys_tweak;
     #ifdef DEBUGON
     void Debug() { //debug printing.
-        if(sizeof(long) == sizeof(long long)) { //just trying to workaround a warning -w-
-            printf("Sector Offset (Lo, Hi): %lu, %lu\n"
-                "Buffer Length: %lu\n"
-                "Sector Size: %lu\n"
-                "Skipped Bytes: %lu\n\n",
-                *sectoroffset.Lo(), *sectoroffset.Hi(),
-                buf.len,
-                sector_size,
-                skipped_bytes);
-        } else {
-            printf("Sector Offset (Lo, Hi): %llu, %llu\n"
-                "Buffer Length: %llu\n"
-                "Sector Size: %llu\n"
-                "Skipped Bytes: %llu\n\n",
-                *sectoroffset.Lo(), *sectoroffset.Hi(),
-                buf.len,
-                sector_size,
-                skipped_bytes);
-        }
+        printf("Sector Offset (Lo, Hi): %llu, %llu\n"
+            "Buffer Length: %llu\n"
+            "Sector Size: %llu\n"
+            "Skipped Bytes: %llu\n\n",
+            (unsigned long long)*sectoroffset.Lo(), (unsigned long long)*sectoroffset.Hi(),
+            (unsigned long long)buf.len,
+            (unsigned long long)sector_size,
+            (unsigned long long)skipped_bytes);
         fflush(stdout);
     }
     #endif
