@@ -10,7 +10,7 @@ try:
     imported_ccrypto = True
 except ImportError:
     try:
-        from ccrypto import _xtsn_schedule, _xtsn_decrypt, _xtsn_decrypt
+        from ccrypto import _xtsn_schedule, _xtsn_decrypt, _xtsn_encrypt
         imported_ccrypto = True
     except ImportError:
         print("Warning: couldn't load ccrypto, loading slower Python module.")
@@ -23,19 +23,19 @@ if imported_ccrypto:
         def __init__(self, crypt: bytes, tweak: bytes):
             self.roundkeys_x2 = _xtsn_schedule(crypt, tweak)
 
-        def decrypt(self, buf: bytes, sector_off: int, sector_size: int = 0x200) -> bytes:
-            return _xtsn_decrypt(buf, self.roundkeys_x2, 0, sector_off, sector_size)
+        def decrypt(self, buf: bytes, sector_off: int, sector_size: int = 0x200, skipped_bytes: int = 0) -> bytes:
+            return _xtsn_decrypt(buf, self.roundkeys_x2, 0, sector_off, sector_size, skipped_bytes)
 
-        def decrypt_long(self, buf: bytes, sector_off: int, sector_size: int = 0x200) -> bytes:
+        def decrypt_long(self, buf: bytes, sector_off: int, sector_size: int = 0x200, skipped_bytes: int = 0) -> bytes:
             return _xtsn_decrypt(buf, self.roundkeys_x2, (sector_off >> 64) & 0xFFFFFFFFFFFFFFFF,
-                                 sector_off & 0xFFFFFFFFFFFFFFFF, sector_size)
+                                 sector_off & 0xFFFFFFFFFFFFFFFF, sector_size, skipped_bytes)
 
-        def encrypt(self, buf: bytes, sector_off: int, sector_size: int = 0x200) -> bytes:
-            return _xtsn_encrypt(buf, self.roundkeys_x2, 0, sector_off, sector_size)
+        def encrypt(self, buf: bytes, sector_off: int, sector_size: int = 0x200, skipped_bytes: int = 0) -> bytes:
+            return _xtsn_encrypt(buf, self.roundkeys_x2, 0, sector_off, sector_size, skipped_bytes)
 
-        def encrypt_long(self, buf: bytes, sector_off: int, sector_size: int = 0x200) -> bytes:
+        def encrypt_long(self, buf: bytes, sector_off: int, sector_size: int = 0x200, skipped_bytes: int = 0) -> bytes:
             return _xtsn_encrypt(buf, self.roundkeys_x2, (sector_off >> 64) & 0xFFFFFFFFFFFFFFFF,
-                                 sector_off & 0xFFFFFFFFFFFFFFFF, sector_size)
+                                 sector_off & 0xFFFFFFFFFFFFFFFF, sector_size, skipped_bytes)
 
 else:
     import struct
