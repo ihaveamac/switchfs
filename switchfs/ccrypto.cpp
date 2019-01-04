@@ -11,10 +11,10 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
-union {
+const static union {
     u16 foo;
     u8 islittle;
-} endian = {.foo = 1};
+} endian = {(u16)0x001};
 
 inline static u64 be64(u64 var) {
     if(endian.islittle) {
