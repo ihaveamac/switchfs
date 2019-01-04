@@ -20,8 +20,6 @@ NAND currently requires a keys text file from [biskeydump](https://switchtools.s
   * `<py-cmd>` is `py -3` on Windows, `python3` on macOS/Linux
 
 # Stuff to do
-* Writing support (encrypt function implemented)
-* implement option parsing
 * more types
 * release binaries with pre-compiled extensions
 * ...
@@ -33,7 +31,7 @@ NAND currently requires a keys text file from [biskeydump](https://switchtools.s
 
 `switchfs/crypto.py` AES-XTS part is taken from @plutooo's [crypto gist](https://gist.github.com/plutooo/fd4b22e7f533e780c1759057095d7896), modified for Python 3 compatibility and optimization.
 
-`switchfs/ccrypto.c` AES-XTS part is by @luigoalma, based on @plutooo's gist above; Python module implementation by me(@ihaveamac).
+`switchfs/ccrypto.cpp` AES-XTS part is by @luigoalma, based on @plutooo's gist above; Python module implementation by me(@ihaveamac).
 
 # Related projects
 * [fuse-3ds](https://github.com/ihaveamac/fuse-3ds) - some code shared

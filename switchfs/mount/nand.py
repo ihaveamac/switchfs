@@ -1,17 +1,14 @@
 import logging
 import os
 from collections import defaultdict
-from errno import ENOENT
-from math import ceil
+from errno import ENOENT, EROFS
 from stat import S_IFDIR, S_IFREG
 from sys import argv, exit
 from typing import TYPE_CHECKING
 from zlib import crc32
 
 from crypto import XTSN, parse_biskeydump
-
-from fuse import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
-
+from ._common import FUSE, FuseOSError, Operations, LoggingMixIn, fuse_get_context
 from . import _common as _c
 
 if TYPE_CHECKING:
@@ -26,13 +23,10 @@ bis_key_ids = defaultdict(lambda: -1, {
 })
 
 
-# TODO: writing?
-
-
 class NANDImageMount(LoggingMixIn, Operations):
     fd = 0
 
-    def __init__(self, nand_fp: 'BinaryIO', g_stat: os.stat_result, keys: str, readonly: bool = True):
+    def __init__(self, nand_fp: 'BinaryIO', g_stat: os.stat_result, keys: str, readonly: bool = False):
         self.readonly = readonly
         self.g_stat = {'st_ctime': int(g_stat.st_ctime), 'st_mtime': int(g_stat.st_mtime),
                        'st_atime': int(g_stat.st_atime)}
@@ -83,6 +77,9 @@ class NANDImageMount(LoggingMixIn, Operations):
 
     destroy = __del__
 
+    def flush(self, path, fh):
+        return self.f.flush()
+
     @_c.ensure_lower_path
     def getattr(self, path: str, fh=None):
         uid, gid, pid = fuse_get_context()
@@ -131,6 +128,50 @@ class NANDImageMount(LoggingMixIn, Operations):
             self.f.seek(real_offset)
             return self.f.read(size)
 
+    @_c.ensure_lower_path
+    def write(self, path: str, data: bytes, offset: int, fh):
+        if self.readonly:
+            raise FuseOSError(EROFS)
+
+        fi = self.files[path]
+        real_offset: int = fi['start'] + offset
+        real_len = len(data)
+
+        if fi['start'] + offset > fi['end']:
+            # not writing past the file size
+            return real_len
+
+        if real_offset + real_len > fi['end']:
+            data = data[:-((real_offset + real_len) - (fi['end'] - fi['start']))]
+
+        if fi['bis_key'] >= 0:
+            before = offset % 16
+            after = (offset + real_len) % 16
+            aligned_offset = offset - before
+            aligned_real_offset = real_offset - before
+            if after:
+                # this sucks...
+                new_after = 16 - after
+                last_block_ending = self.read(path, new_after, offset + len(data), 0)
+            else:
+                last_block_ending = b''
+
+            if before:
+                first_block_beginning = self.read(path, before, offset - before, 0)
+            else:
+                first_block_beginning = b''
+
+            self.f.seek(aligned_real_offset)
+            xtsn = self.crypto[fi['bis_key']]
+            to_encrypt = b''.join((first_block_beginning, data, last_block_ending))
+            self.f.write(xtsn.encrypt(to_encrypt, 0, 0x4000, aligned_offset))
+
+        else:
+            self.f.seek(real_offset)
+            self.f.write(data)
+
+        return real_len
+
     # TODO: get the real nand size, instead of hard-coding it
     @_c.ensure_lower_path
     def statfs(self, path: str):
@@ -142,18 +183,29 @@ def main(prog: str = None, args: list = None):
     from argparse import ArgumentParser
     if args is None:
         args = argv[1:]
-    parser = ArgumentParser(prog=prog, description='Mount Nintendo Switch NAND images. Read-only for now.')
-    parser.add_argument('--keys', help='Keys text file from biskeydump.')
-    parser.add_argument('nand', help='NAND image')
-    parser.add_argument('mount_point', help='mount point')
+    parser = ArgumentParser(prog=prog, description='Mount Nintendo Switch NAND images. Read-only for now.',
+                            parents=(_c.default_argp, _c.readonly_argp, _c.main_args('nand', 'NAND image')))
+    parser.add_argument('--keys', help='keys text file from biskeydump')
 
     a = parser.parse_args(args)
+    opts = dict(_c.parse_fuse_opts(a.o))
+
+    if a.do:
+        logging.basicConfig(level=logging.DEBUG, filename=a.do)
 
     nand_stat = os.stat(a.nand)
 
-    with open(a.nand, 'rb') as f, open(a.keys, 'r', encoding='utf-8') as k:
-        mount = NANDImageMount(nand_fp=f, g_stat=nand_stat, keys=k.read())
-        FUSE(mount, a.mount_point, foreground=True, ro=True, nothreads=True,
-             fsname=os.path.realpath(a.nand).replace(',', '_'), allow_root=True)
-        # allow_root is True by default here to allow mounting on *nix
-        # this will be changed once option parsing is copied over
+    with open(a.nand, 'r+b') as f, open(a.keys, 'r', encoding='utf-8') as k:
+        mount = NANDImageMount(nand_fp=f, g_stat=nand_stat, keys=k.read(), readonly=a.ro)
+        if _c.macos or _c.windows:
+            opts['fstypename'] = 'NAND'
+            # assuming / is the path separator since macos. but if windows gets support for this,
+            #   it will have to be done differently.
+            if _c.macos:
+                path_to_show = os.path.realpath(a.nand).rsplit('/', maxsplit=2)
+                opts['volname'] = f'Nintendo Switch NAND ({path_to_show[-2]}/{path_to_show[-1]})'
+            elif _c.windows:
+                # volume label can only be up to 32 chars
+                opts['volname'] = 'Nintendo Switch NAND'
+        FUSE(mount, a.mount_point, foreground=a.fg or a.do or a.d, ro=a.ro, nothreads=True, debug=a.d,
+             fsname=os.path.realpath(a.nand).replace(',', '_'), **opts)
