@@ -116,16 +116,16 @@ class NANDImageMount(LoggingMixIn, Operations):
             size = fi['end'] - offset
 
         if fi['bis_key'] >= 0:
-            before = offset % 0x4000
+            before = offset % 16
+            after = (offset + size) % 16
+            if after:
+                after = 16 - after
             aligned_real_offset = real_offset - before
             aligned_offset = offset - before
-            aligned_size: int = ceil((size + before) / 0x4000) * 0x4000
+            size = before + size
             self.f.seek(aligned_real_offset)
-            xtsn: XTSN = self.crypto[fi['bis_key']]
-            sector_offset = aligned_offset // 0x4000
-            # noinspection PyTypeChecker
-            return xtsn.decrypt(self.f.read(ceil(aligned_size / 0x4000) * 0x4000), sector_offset, 0x4000)[
-                   before:before + size]
+            xtsn = self.crypto[fi['bis_key']]
+            return xtsn.decrypt(self.f.read(size + after), 0, 0x4000, aligned_offset)[before:size]
 
         else:
             self.f.seek(real_offset)
@@ -153,8 +153,6 @@ def main(prog: str = None, args: list = None):
 
     with open(a.nand, 'rb') as f, open(a.keys, 'r', encoding='utf-8') as k:
         mount = NANDImageMount(nand_fp=f, g_stat=nand_stat, keys=k.read())
-        # with open('test.bin', 'wb') as o:
-        #     o.write(mount.read('/SAFE.img', 0x8000, 0, 0))
         FUSE(mount, a.mount_point, foreground=True, ro=True, nothreads=True,
              fsname=os.path.realpath(a.nand).replace(',', '_'), allow_root=True)
         # allow_root is True by default here to allow mounting on *nix
