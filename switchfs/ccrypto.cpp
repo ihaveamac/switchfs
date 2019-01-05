@@ -60,6 +60,11 @@ inline static u64 le64(u64 var) {
     return var;
 }
 
+typedef struct {
+    PyObject_HEAD
+    u8 roundkeys_x2[352];
+} XTSNObject;
+
 class bigint128 {
 public:
     union {
@@ -79,6 +84,20 @@ public:
     inline void Step(u64 amount) {
         if (v64[0] > (v64[0] + amount)) v64[1] += 1LLU;
         v64[0] += amount;
+    }
+    static int FromPyLong(PyObject *o, SectorOffset *p) {
+        if(!PyLong_CheckExact(o)) {
+            PyErr_SetString(PyExc_ValueError, "Not an int was given, convertion to sector offset failed.");
+            return 0;
+        }
+        auto buf = PyObject_CallMethod(o, "to_bytes", "is", 16, "big");
+        if(!buf) return 0;
+        u64 *_buf = (u64 *)PyBytes_AsString(buf);
+        *p->Hi() = be64(_buf[0]);
+        *p->Lo() = be64(_buf[1]);
+        Py_DECREF(buf);
+
+        return Py_CLEANUP_SUPPORTED;
     }
 };
 
@@ -169,12 +188,20 @@ class XTSN {
         }
     }
 public:
-    inline PyObject *PythonRun(PyObject *self, PyObject *args) {
-        Py_buffer orig_buf, roundkeys_x2;
+    inline PyObject *PythonRun(XTSNObject *self, PyObject *args, PyObject *kwds) {
+        Py_buffer orig_buf;
         PyObject *local_buf = NULL;
 
-        if (!PyArg_ParseTuple(args, "y*y*KKKK", &orig_buf, &roundkeys_x2,
-           sectoroffset.Hi(), sectoroffset.Lo(), &sector_size, &skipped_bytes))
+        static const char* keywords[] = {
+            "buf",
+            "sector_off",
+            "sector_size",
+            "skipped_bytes",
+            NULL,
+        };
+
+        if (!PyArg_ParseTupleAndKeywords(args, kwds, "y*O&|KK", (char**)keywords, &orig_buf,
+           &SectorOffset::FromPyLong, &sectoroffset, &sector_size, &skipped_bytes))
             return NULL;
 
         if (orig_buf.len == 0) { //nothing to crypt i guess
@@ -182,11 +209,6 @@ public:
             if (!local_buf) {
                 PyErr_SetString(PyExc_MemoryError, "Python doesn't have memory for the buffer.");
             }
-            goto end;
-        }
-
-        if (roundkeys_x2.len != 0xB0 * 2) {
-            PyErr_SetString(PyExc_ValueError, "roundkeys_x2 len is not 352");
             goto end;
         }
 
@@ -212,8 +234,8 @@ public:
             goto end;
         }
 
-        roundkeys_key = (u8*)roundkeys_x2.buf;
-        roundkeys_tweak = (u8*)roundkeys_x2.buf + 0xB0;
+        roundkeys_key = self->roundkeys_x2;
+        roundkeys_tweak = self->roundkeys_x2 + 0xB0;
         buf.ptr = (bigint128 *) PyBytes_AsString(local_buf);
         buf.len = (u64) orig_buf.len;
 
@@ -224,9 +246,9 @@ public:
 
     end:
         PyBuffer_Release(&orig_buf);
-        PyBuffer_Release(&roundkeys_x2);
         return local_buf;
     }
+    inline XTSN() : sector_size(0x200), skipped_bytes(0) {}
 };
 
 typedef XTSN<&aes_decrypt_128> XTSNDecrypt;
@@ -239,12 +261,18 @@ aes_xtsn_schedule_128(u8* key, u8* tweakin, u8* roundkeys_x2) {
 }
 
 // python stuff
-static PyObject *py_xtsn_schedule(PyObject *self, PyObject *args) {
+static int XTSN_init(XTSNObject *self, PyObject *args, PyObject *kwds) {
     Py_buffer key, tweak;
-    PyObject *buf = NULL;
+    int ret = -1;
 
-    if (!PyArg_ParseTuple(args, "y*y*", &key, &tweak)) {
-        return NULL;
+    static const char* keywords[] = {
+        "crypt",
+        "tweak",
+        NULL,
+    };
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "y*y*", (char**)keywords, &key, &tweak)) {
+        return -1;
     }
 
     if (key.len != 16) {
@@ -257,45 +285,77 @@ static PyObject *py_xtsn_schedule(PyObject *self, PyObject *args) {
         goto end;
     }
 
-    u8 roundkeys_x2[0xB0 * 2];
-    aes_xtsn_schedule_128((u8*)key.buf, (u8*)tweak.buf, roundkeys_x2);
-    buf = PyBytes_FromStringAndSize((char * ) roundkeys_x2, 0xB0 * 2);
-
-    if (!buf) {
-        PyErr_SetString(PyExc_MemoryError, "Python doesn't have memory for the buffer.");
-    }
+    aes_xtsn_schedule_128((u8*)key.buf, (u8*)tweak.buf, self->roundkeys_x2);
+    ret = 0;
 
 end:
     PyBuffer_Release(&key);
     PyBuffer_Release(&tweak);
-    return buf;
+    return ret;
 }
 
-static PyObject *py_xtsn_decrypt(PyObject *self, PyObject *args) {
+static PyObject *py_xtsn_decrypt(XTSNObject *self, PyObject *args, PyObject *kwds) {
     XTSNDecrypt xtsn;
-    return xtsn.PythonRun(self, args);
+    return xtsn.PythonRun(self, args, kwds);
 }
 
-static PyObject *py_xtsn_encrypt(PyObject *self, PyObject *args) {
+static PyObject *py_xtsn_encrypt(XTSNObject *self, PyObject *args, PyObject *kwds) {
     XTSNEncrypt xtsn;
-    return xtsn.PythonRun(self, args);
+    return xtsn.PythonRun(self, args, kwds);
 }
 
-static PyMethodDef ccrypto_methods[] = {
-    {"_xtsn_schedule", py_xtsn_schedule, METH_VARARGS, NULL},
-    {"_xtsn_decrypt",  py_xtsn_decrypt,  METH_VARARGS, NULL},
-    {"_xtsn_encrypt",  py_xtsn_encrypt,  METH_VARARGS, NULL},
-    {NULL,             NULL,             0,            NULL}
+static PyMethodDef XTSN_methods[] = {
+    {"decrypt", (PyCFunction) py_xtsn_decrypt, METH_VARARGS | METH_KEYWORDS, "Decrypt AES-XTSN content."},
+    {"encrypt", (PyCFunction) py_xtsn_encrypt, METH_VARARGS | METH_KEYWORDS, "Encrypt AES-XTSN content."},
+    {NULL}
 };
+
+static class XTSNType_PyTypeObject : public PyTypeObject {
+public:
+    XTSNType_PyTypeObject() : PyTypeObject({PyVarObject_HEAD_INIT(NULL, 0)}) {
+        tp_name = "crypto.XTSN";
+        tp_basicsize = sizeof(XTSNObject);
+        tp_itemsize = 0;
+        tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
+        tp_doc = "Nintendo AES-XTSN";
+        tp_methods = XTSN_methods;
+        tp_init = (initproc) XTSN_init;
+        tp_new = PyType_GenericNew;
+    }
+} XTSNType;
+
+//last time i tried this format with MSVC, it failed-
+/*
+static PyTypeObject XTSNType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "crypto.XTSN",
+    .tp_basicsize = sizeof(XTSNObject),
+    .tp_itemsize = 0,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,
+    .tp_doc = "Nintendo AES-XTSN",
+    .tp_methods = XTSN_methods,
+    .tp_init = (initproc) XTSN_init,
+    .tp_new = PyType_GenericNew,
+};*/
 
 static struct PyModuleDef ccrypto_module = {
     PyModuleDef_HEAD_INIT,
     "ccrypto",
     NULL,
     -1,
-    ccrypto_methods
+    NULL,
 };
 
 PyMODINIT_FUNC PyInit_ccrypto(void) {
-    return PyModule_Create(&ccrypto_module);
+    PyObject *m;
+    if (PyType_Ready(&XTSNType) < 0)
+        return NULL;
+
+    m = PyModule_Create(&ccrypto_module);
+    if (m == NULL)
+        return NULL;
+
+    Py_INCREF(&XTSNType);
+    PyModule_AddObject(m, "XTSN", (PyObject *) &XTSNType);
+    return m;
 }
