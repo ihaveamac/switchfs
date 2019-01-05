@@ -90,12 +90,11 @@ public:
             PyErr_SetString(PyExc_ValueError, "Not an int was given, convertion to sector offset failed.");
             return 0;
         }
-        auto buf = PyObject_CallMethod(o, "to_bytes", "is", 16, "big");
-        if(!buf) return 0;
-        u64 *_buf = (u64 *)PyBytes_AsString(buf);
-        *p->Hi() = be64(_buf[0]);
-        *p->Lo() = be64(_buf[1]);
-        Py_DECREF(buf);
+        auto _hi = PyObject_CallMethod(o, "__rshift__", "i", 64);
+        if(!_hi) return 0;
+        *p->Lo() = PyLong_AsUnsignedLongLongMask(o);
+        *p->Hi() = PyLong_AsUnsignedLongLongMask(_hi);
+        Py_DECREF(_hi);
 
         return Py_CLEANUP_SUPPORTED;
     }
