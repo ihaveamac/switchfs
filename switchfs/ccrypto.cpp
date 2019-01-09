@@ -100,7 +100,7 @@ public:
     inline void* GetFunctionPtr(const char* name) {
         void* ptr;
         #if defined _WIN16 || defined _WIN32 || defined _WIN64
-        ptr = (void*)GetProcAddressA(handle, name);
+        ptr = (void*)GetProcAddress(handle, name);
         #elif defined __linux__ || (defined __APPLE__ && defined __MACH__)
         ptr = dlsym(handle, name);
         #endif
@@ -195,7 +195,7 @@ static DynamicHelper lcrypto;
 static bool lib_to_load = true;
 
 template<bool encrypt>
-static bool openssl_crypt(const u8* key, const u8* data, u8* out) {
+bool openssl_crypt(const u8* key, const u8* data, u8* out) {
     void *ctx = EVP_CIPHER_CTX_new();
     if(!ctx) return false;
     bool ret = false;
@@ -211,12 +211,12 @@ static bool openssl_crypt(const u8* key, const u8* data, u8* out) {
     return ret;
 }
 
-inline static bool aes_decrypt_128_wrap(const u8* roundkey, const u8* data, u8* out) {
+bool aes_decrypt_128_wrap(const u8* roundkey, const u8* data, u8* out) {
     aes_decrypt_128(roundkey, data, out);
     return true;
 }
 
-inline static bool aes_encrypt_128_wrap(const u8* roundkey, const u8* data, u8* out) {
+bool aes_encrypt_128_wrap(const u8* roundkey, const u8* data, u8* out) {
     aes_encrypt_128(roundkey, data, out);
     return true;
 }
