@@ -11,7 +11,11 @@ extern "C" {
 #if defined _WIN16 || defined _WIN32 || defined _WIN64
 #include <windows.h>
 typedef HMODULE DYHandle;
+#ifdef _WIN64
+#define LIBCRYPTO "libcrypto-1_1-x64.dll"
+#else
 #define LIBCRYPTO "libcrypto-1_1.dll"
+#endif
 #elif defined __linux__ || (defined __APPLE__ && defined __MACH__)
 #include <dlfcn.h>
 typedef void* DYHandle;
@@ -97,14 +101,13 @@ public:
             handle = 0;
         }
     }
-    inline void* GetFunctionPtr(const char* name) {
-        void* ptr;
+    inline void GetFunctionPtr(const char* name, void** ptr) {
+        *ptr = NULL;
         #if defined _WIN16 || defined _WIN32 || defined _WIN64
-        ptr = (void*)GetProcAddress(handle, name);
+        *ptr = (void*)GetProcAddress(handle, name);
         #elif defined __linux__ || (defined __APPLE__ && defined __MACH__)
-        ptr = dlsym(handle, name);
+        *ptr = dlsym(handle, name);
         #endif
-        return ptr;
     }
     inline bool HasHandle() {return handle != NULL;}
     DynamicHelper() : handle(0) {}
@@ -441,6 +444,28 @@ static void unload_lcrypto(void* unused) {
     }
 }
 
+static void load_lcrypto() {
+    if(!lib_to_load) return;
+    lib_to_load = false;
+    if(!lcrypto.LoadLib(LIBCRYPTO)) return;
+    lcrypto.GetFunctionPtr("EVP_CIPHER_CTX_new", (void**)&EVP_CIPHER_CTX_new);
+    lcrypto.GetFunctionPtr("EVP_aes_128_ecb", (void**)&EVP_aes_128_ecb);
+    lcrypto.GetFunctionPtr("EVP_CipherInit_ex", (void**)&EVP_CipherInit_ex);
+    lcrypto.GetFunctionPtr("EVP_CIPHER_CTX_key_length", (void**)&EVP_CIPHER_CTX_key_length);
+    lcrypto.GetFunctionPtr("EVP_CIPHER_CTX_set_padding", (void**)&EVP_CIPHER_CTX_set_padding);
+    lcrypto.GetFunctionPtr("EVP_CipherUpdate", (void**)&EVP_CipherUpdate);
+    lcrypto.GetFunctionPtr("EVP_CipherFinal_ex", (void**)&EVP_CipherFinal_ex);
+    lcrypto.GetFunctionPtr("EVP_CIPHER_CTX_free", (void**)&EVP_CIPHER_CTX_free);
+
+    if(EVP_CIPHER_CTX_new && EVP_aes_128_ecb && EVP_CipherInit_ex &&
+      EVP_CIPHER_CTX_key_length && EVP_CIPHER_CTX_set_padding &&
+      EVP_CipherUpdate && EVP_CipherFinal_ex && EVP_CIPHER_CTX_free) {
+        XTSN_methods[0].ml_meth = (PyCFunction)py_xtsn_openssl_decrypt;
+        XTSN_methods[1].ml_meth = (PyCFunction)py_xtsn_openssl_encrypt;
+        PySys_WriteStdout("Found and using openssl lib.\n");
+    } else lcrypto.Unload();
+}
+
 static struct PyModuleDef ccrypto_module = {
     PyModuleDef_HEAD_INIT,
     "ccrypto",
@@ -454,25 +479,7 @@ static struct PyModuleDef ccrypto_module = {
 };
 
 PyMODINIT_FUNC PyInit_ccrypto(void) {
-    // TODO: clean up this
-    if(lib_to_load) {
-        lib_to_load = false;
-        if(lcrypto.LoadLib(LIBCRYPTO)) {
-            EVP_CIPHER_CTX_new = (void *(WINAPI *)())lcrypto.GetFunctionPtr("EVP_CIPHER_CTX_new");
-            EVP_aes_128_ecb = (void *(WINAPI *)())lcrypto.GetFunctionPtr("EVP_aes_128_ecb");
-            EVP_CipherInit_ex = (int (WINAPI *)(void*, void*, void*, const void*, void*, int))lcrypto.GetFunctionPtr("EVP_CipherInit_ex");
-            EVP_CIPHER_CTX_key_length = (int (WINAPI *)(void*))lcrypto.GetFunctionPtr("EVP_CIPHER_CTX_key_length");
-            EVP_CIPHER_CTX_set_padding = (void (WINAPI *)(void*, int))lcrypto.GetFunctionPtr("EVP_CIPHER_CTX_set_padding");
-            EVP_CipherUpdate = (int (WINAPI *)(void*, void*, int*, const void*, int))lcrypto.GetFunctionPtr("EVP_CipherUpdate");
-            EVP_CipherFinal_ex = (int (WINAPI *)(void*, void*, int*))lcrypto.GetFunctionPtr("EVP_CipherFinal_ex");
-            EVP_CIPHER_CTX_free = (void (WINAPI *)(void*))lcrypto.GetFunctionPtr("EVP_CIPHER_CTX_free");
-            if(EVP_CIPHER_CTX_new && EVP_aes_128_ecb && EVP_CipherInit_ex && EVP_CIPHER_CTX_key_length && EVP_CIPHER_CTX_set_padding && EVP_CipherUpdate && EVP_CipherFinal_ex && EVP_CIPHER_CTX_free) {
-                XTSN_methods[0].ml_meth = (PyCFunction)py_xtsn_openssl_decrypt;
-                XTSN_methods[1].ml_meth = (PyCFunction)py_xtsn_openssl_encrypt;
-                PySys_WriteStdout("Found and using openssl lib.\n");
-            } else lcrypto.Unload();
-        } else lcrypto.Unload();
-    }
+    load_lcrypto();
     PyObject *m;
     if (PyType_Ready(&XTSNType) < 0)
         return NULL;
