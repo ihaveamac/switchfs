@@ -11,6 +11,7 @@
  * Updated in Jan 2017, update muliple function on GF(2^8).
  *
  */
+extern "C" {
 #include <stdint.h>
 #include <stdio.h>
 
@@ -294,3 +295,4 @@ void aes_decrypt_128(const uint8_t *roundkeys, const uint8_t *ciphertext, uint8_
     }
 
 }
+} //extern

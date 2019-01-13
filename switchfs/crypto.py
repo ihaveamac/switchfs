@@ -6,36 +6,12 @@ if TYPE_CHECKING:
 
 try:
     # noinspection PyProtectedMember
-    from .ccrypto import _xtsn_schedule, _xtsn_decrypt, _xtsn_encrypt
+    from .ccrypto import XTSN
 except ImportError:
     try:
-        from ccrypto import _xtsn_schedule, _xtsn_decrypt, _xtsn_encrypt
+        from ccrypto import XTSN
     except ImportError:
         exit("Couldn't load ccrypto. The extension needs to be compiled.")
-        # never reached, just to shut up the ide
-        _xtsn_schedule = None
-        _xtsn_decrypt = None
-        _xtsn_encrypt = None
-
-
-class XTSN:
-    def __init__(self, crypt: bytes, tweak: bytes):
-        self.roundkeys_x2 = _xtsn_schedule(crypt, tweak)
-
-    def decrypt(self, buf: bytes, sector_off: int, sector_size: int = 0x200, skipped_bytes: int = 0) -> bytes:
-        return _xtsn_decrypt(buf, self.roundkeys_x2, 0, sector_off, sector_size, skipped_bytes)
-
-    def decrypt_long(self, buf: bytes, sector_off: int, sector_size: int = 0x200, skipped_bytes: int = 0) -> bytes:
-        return _xtsn_decrypt(buf, self.roundkeys_x2, (sector_off >> 64) & 0xFFFFFFFFFFFFFFFF,
-                             sector_off & 0xFFFFFFFFFFFFFFFF, sector_size, skipped_bytes)
-
-    def encrypt(self, buf: bytes, sector_off: int, sector_size: int = 0x200, skipped_bytes: int = 0) -> bytes:
-        return _xtsn_encrypt(buf, self.roundkeys_x2, 0, sector_off, sector_size, skipped_bytes)
-
-    def encrypt_long(self, buf: bytes, sector_off: int, sector_size: int = 0x200, skipped_bytes: int = 0) -> bytes:
-        return _xtsn_encrypt(buf, self.roundkeys_x2, (sector_off >> 64) & 0xFFFFFFFFFFFFFFFF,
-                             sector_off & 0xFFFFFFFFFFFFFFFF, sector_size, skipped_bytes)
-
 
 def parse_biskeydump(keys: str):
     bis_keys: List[List[bytes]] = [[None, None], [None, None], [None, None], [None, None]]

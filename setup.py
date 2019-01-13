@@ -25,6 +25,7 @@ setup(
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.6',
     ],
-    ext_modules=[Extension('switchfs.ccrypto', sources=['switchfs/ccrypto.cpp', 'switchfs/aes.c'],
-                           extra_compile_args=['/Ox' if sys.platform == 'win32' else '-O3'])]
+    ext_modules=[Extension('switchfs.ccrypto', sources=['switchfs/ccrypto.cpp', 'switchfs/aes.cpp'],
+                           extra_compile_args=['/Ox' if sys.platform == 'win32' else '-O3',
+                           '' if sys.platform == 'win32' else '-std=c++11'])]
 )
