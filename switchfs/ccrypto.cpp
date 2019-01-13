@@ -341,6 +341,7 @@ public:
         } catch(...) {
             Py_XDECREF(local_buf);
             local_buf = NULL;
+            PyErr_SetString(PyExc_RuntimeError, "Unexpected error from openssl.");
         }
 
     end:
