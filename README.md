@@ -1,3 +1,5 @@
+Project merged with ninfs (formerly fuse-3ds) with commit [`5b988be`](https://github.com/ihaveamac/ninfs/commit/5b988be01b393b35b2b9cffc61aa3006592a7d4c).
+
 # switchfs
 
 FUSE (Filesystem in Userspace) scripts for Nintendo Switch files
